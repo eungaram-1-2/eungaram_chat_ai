@@ -394,7 +394,7 @@
       margin: 0 auto;
     }
 
-    /* 파일 첨부 미리보기 */
+    /* 파일 첨부 미리보기 (비활성화)
     .file-preview-bar {
       display: none;
       align-items: center;
@@ -426,6 +426,7 @@
       transition: color .15s, background .15s;
     }
     .file-preview-remove:hover { color: #f87171; background: rgba(248,113,113,.1); }
+    */
 
     .input-box {
       background: var(--input-bg);
@@ -456,7 +457,7 @@
     }
     .input-left-btns { display: flex; gap: 4px; align-items: center; }
 
-    /* 파일 첨부 버튼 */
+    /* 파일 첨부 버튼 (비활성화)
     .attach-btn {
       width: 34px; height: 34px;
       background: none; border: 1px solid #505050;
@@ -467,6 +468,7 @@
     }
     .attach-btn:hover { background: #363636; color: var(--text); border-color: #666; }
     .attach-btn svg { width: 16px; height: 16px; }
+    */
 
     /* 전송 버튼 */
     .send-btn {
@@ -488,8 +490,9 @@
       color: #555; margin-top: 9px;
     }
 
-    /* 숨겨진 파일 입력 */
+    /* 숨겨진 파일 입력 (비활성화)
     #fileInput { display: none; }
+    */
 
     /* ════ MOBILE ════ */
     @media (max-width: 768px) {
@@ -598,7 +601,7 @@
   <!-- 입력 -->
   <div class="input-section">
     <div class="input-wrapper">
-      <!-- 파일 첨부 미리보기 -->
+      <!-- 파일 첨부 미리보기 (비활성화)
       <div class="file-preview-bar" id="filePreviewBar">
         <img src="" alt="미리보기" class="file-preview-thumb" id="filePrevThumb" style="display:none"/>
         <span class="file-preview-info">
@@ -607,18 +610,20 @@
         </span>
         <button class="file-preview-remove" onclick="removeAttachment()" title="첨부 파일 제거">✕</button>
       </div>
+      -->
 
       <div class="input-box">
         <textarea id="inputBox" rows="1" placeholder="eungaram-1-2_GPT에게 메시지 보내기" maxlength="4000"></textarea>
         <div class="input-footer-row">
           <div class="input-left-btns">
-            <!-- 파일 첨부 버튼 -->
+            <!-- 파일 첨부 버튼 (비활성화)
             <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="파일 첨부">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
               </svg>
             </button>
             <input type="file" id="fileInput" accept="image/*,.txt,.md,.csv,.js,.py,.html,.css,.json" onchange="handleFileAttach(this)">
+            -->
           </div>
           <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="전송 (Enter)">
             <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -631,7 +636,7 @@
 </div>
 
 <script>
-const API_KEY = "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";
+const API_KEY = "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";
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 /* ── 시스템 프롬프트 ── */
@@ -662,9 +667,10 @@ MANDATORY FORMAT RULE:
 말투: 친근한 존댓말(~해요, ~이에요), 이모지 적당히
 길이: 핵심만 담아 적당히 (너무 길지 않게)`;
 
-/* ── 파일 첨부 상태 ── */
-let attachedFile = null;   // { name, size, content, type, dataUrl }
+/* ── 파일 첨부 상태 (비활성화) ── */
+// let attachedFile = null;
 
+/*
 function handleFileAttach(input) {
   const file = input.files[0];
   if (!file) return;
@@ -711,6 +717,7 @@ function formatFileSize(bytes) {
   if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
   return (bytes/1024/1024).toFixed(1) + ' MB';
 }
+*/
 
 /* ── 이상한 문자 자동 제거 ── */
 function sanitize(text) {
@@ -832,8 +839,8 @@ let currentChatId = null;
 
 function newChat() {
   history.length = 0;
-  attachedFile = null;
-  document.getElementById('filePreviewBar').classList.remove('visible');
+  // attachedFile = null;
+  // document.getElementById('filePreviewBar').classList.remove('visible');
   chatArea.innerHTML = '';
   chatArea.insertAdjacentHTML('beforeend', `
     <div class="welcome" id="welcome">
@@ -934,11 +941,8 @@ function addActionBtn(aiBody, fullText) {
 /* ── 메시지 전송 ── */
 async function sendMessage() {
   const text = inputBox.value.trim();
-  if (!text && !attachedFile) return;
+  if (!text) return;
   if (sendBtn.disabled) return;
-
-  const file = attachedFile;
-  const displayText = text || (file ? `[${file.name}]` : '');
 
   inputBox.value = "";
   inputBox.style.height = "auto";
@@ -946,34 +950,18 @@ async function sendMessage() {
 
   // 첫 메시지면 히스토리에 추가
   if (history.length === 0) {
-    addToHistory(displayText.slice(0, 36) + (displayText.length > 36 ? '…' : ''));
+    addToHistory(text.slice(0, 36) + (text.length > 36 ? '…' : ''));
   }
 
-  removeAttachment();
-  appendUser(displayText, file);
+  appendUser(text, null);
 
-  // API에 보낼 content 구성
-  let historyContent;
-  if (file && file.type === 'image') {
-    historyContent = [
-      { type: "text", text: text || `이미지를 분석해줘: ${file.name}` },
-      { type: "image_url", image_url: { url: file.dataUrl } }
-    ];
-  } else if (file && file.type === 'text' && file.content) {
-    const preview = file.content.slice(0, 3000);
-    historyContent = `[첨부 파일: ${file.name}]\n\`\`\`\n${preview}${file.content.length > 3000 ? '\n... (이하 생략)' : ''}\n\`\`\`\n\n${text}`;
-  } else {
-    historyContent = text || displayText;
-  }
-
-  history.push({ role: "user", content: historyContent });
+  history.push({ role: "user", content: text });
 
   const row    = createAiRow();
   const mdDiv  = row.querySelector(".md");
   const aiBody = row.querySelector(".ai-body");
   let full = "";
   let started = false;
-  const hasImage = history.some(m => Array.isArray(m.content) && m.content.some(c => c.type === 'image_url'));
 
   try {
     const res = await fetch(API_URL, {
@@ -983,7 +971,7 @@ async function sendMessage() {
         "Authorization": `Bearer ${API_KEY}`
       },
       body: JSON.stringify({
-        model:       hasImage ? "meta-llama/llama-4-scout-17b-16e-instruct" : "llama-3.3-70b-versatile",
+        model:       "llama-3.3-70b-versatile",
         messages:    [{ role: "system", content: SYSTEM_PROMPT }, ...history],
         temperature: 0.25,
         max_tokens:  1600,
