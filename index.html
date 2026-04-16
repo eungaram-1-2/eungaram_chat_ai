@@ -153,7 +153,31 @@
       font-weight: 700;
     }
     .topbar-right {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .report-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 14px;
+      background: rgba(255,80,80,0.12);
+      border: 1px solid rgba(255,80,80,0.35);
+      border-radius: 8px;
+      color: #ff7070;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background .15s, border-color .15s, transform .15s;
+      font-family: inherit;
+    }
+    .report-btn:hover {
+      background: rgba(255,80,80,0.22);
+      border-color: rgba(255,80,80,0.6);
+      transform: translateY(-1px);
+    }
+    @media (max-width: 600px) {
+      .report-btn span.report-text { display: none; }
+      .report-btn { padding: 7px 10px; }
     }
     .online-dot-wrap {
       display: flex; align-items: center; gap: 6px;
@@ -563,6 +587,9 @@
       </div>
     </div>
     <div class="topbar-right">
+      <a class="report-btn" href="https://open.kakao.com/o/sQsGreji" target="_blank" rel="noopener noreferrer" title="오류 신고">
+        ⚠️ <span class="report-text">오류가 생길시 이 버튼을 눌러 여기로 보내주세요!</span>
+      </a>
       <div class="online-dot-wrap">
         <div class="online-dot"></div>
         온라인
@@ -636,7 +663,7 @@
 </div>
 
 <script>
-const API_KEY = "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";
+const API_KEY = "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";
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 /* ── 시스템 프롬프트 ── */
