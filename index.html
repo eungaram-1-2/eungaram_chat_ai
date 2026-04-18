@@ -971,14 +971,107 @@ function askExample(text) {
   sendMessage();
 }
 
-/* ── 채팅 기록 사이드바 ── */
-const chatHistories = [];   // { id, title, messages }
+/* ── 채팅 기록 사이드바 (localStorage 저장) ── */
+const STORAGE_KEY = 'eungaram_gpt_sessions';
+const MAX_SESSIONS = 50;
+
+function _loadAllSessions() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+function _saveAllSessions() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistories.slice(0, MAX_SESSIONS))); }
+  catch (e) { console.warn('저장 실패:', e); }
+}
+
+let chatHistories = _loadAllSessions(); // { id, title, createdAt, messages[] }
 let currentChatId = null;
+
+function renderSidebar() {
+  const list = document.getElementById('chatHistoryList');
+  list.innerHTML = '';
+  if (chatHistories.length === 0) return;
+
+  const today    = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+  const week      = new Date(today); week.setDate(today.getDate()-7);
+
+  const groups = { '오늘':[], '어제':[], '이전 7일':[], '더 이전':[] };
+  chatHistories.forEach(s => {
+    const d = new Date(s.createdAt); d.setHours(0,0,0,0);
+    if (d >= today)      groups['오늘'].push(s);
+    else if (d >= yesterday) groups['어제'].push(s);
+    else if (d >= week)  groups['이전 7일'].push(s);
+    else                 groups['더 이전'].push(s);
+  });
+
+  Object.entries(groups).forEach(([label, sessions]) => {
+    if (!sessions.length) return;
+    const lbl = document.createElement('div');
+    lbl.className = 'sidebar-section-label';
+    lbl.textContent = label;
+    list.appendChild(lbl);
+    sessions.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'chat-history-item' + (s.id === currentChatId ? ' active' : '');
+      item.dataset.id = s.id;
+      item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px';
+      item.innerHTML = `
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" onclick="loadSession(${s.id})">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="opacity:.45;margin-right:5px;vertical-align:middle"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>${esc(s.title)}
+        </span>
+        <button onclick="deleteSession(${s.id},event)" style="background:none;border:none;color:#666;cursor:pointer;padding:2px 5px;border-radius:4px;font-size:.85rem;flex-shrink:0" title="삭제">✕</button>`;
+      list.appendChild(item);
+    });
+  });
+}
+
+function loadSession(id) {
+  const session = chatHistories.find(s => s.id === id);
+  if (!session) return;
+
+  history.length = 0;
+  session.messages.forEach(m => history.push(m));
+  currentChatId = id;
+
+  chatArea.innerHTML = '';
+  session.messages.forEach(m => {
+    if (m.role === 'user') {
+      const row = document.createElement('div');
+      row.className = 'msg-row user';
+      row.innerHTML = `<div class="msg-inner"><div class="user-bubble"></div></div>`;
+      row.querySelector('.user-bubble').textContent = m.content;
+      chatArea.appendChild(row);
+    } else {
+      const row = document.createElement('div');
+      row.className = 'msg-row ai';
+      row.innerHTML = `
+        <div class="msg-inner">
+          <div class="ai-icon"><img src="eungaram-1-2_GPT_logo.png" alt="AI"></div>
+          <div class="ai-body"><div class="md">${renderMD(m.content)}</div></div>
+        </div>`;
+      addActionBtn(row.querySelector('.ai-body'), m.content);
+      chatArea.appendChild(row);
+    }
+  });
+  chatArea.scrollTop = chatArea.scrollHeight;
+
+  renderSidebar();
+  closeSidebar();
+}
+
+function deleteSession(id, e) {
+  e.stopPropagation();
+  const idx = chatHistories.findIndex(s => s.id === id);
+  if (idx === -1) return;
+  chatHistories.splice(idx, 1);
+  _saveAllSessions();
+  if (currentChatId === id) newChat();
+  else renderSidebar();
+}
 
 function newChat() {
   history.length = 0;
-  // attachedFile = null;
-  // document.getElementById('filePreviewBar').classList.remove('visible');
   chatArea.innerHTML = '';
   chatArea.insertAdjacentHTML('beforeend', `
     <div class="welcome" id="welcome">
@@ -1002,6 +1095,7 @@ function newChat() {
       </div>
     </div>`);
   currentChatId = null;
+  renderSidebar();
   inputBox.focus();
   closeSidebar();
 }
@@ -1009,13 +1103,9 @@ function newChat() {
 function addToHistory(title) {
   const id = Date.now();
   currentChatId = id;
-  const item = document.createElement('div');
-  item.className = 'chat-history-item active';
-  item.dataset.id = id;
-  item.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;opacity:.5"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>${esc(title)}`;
-  document.querySelectorAll('.chat-history-item').forEach(el => el.classList.remove('active'));
-  const list = document.getElementById('chatHistoryList');
-  list.insertBefore(item, list.firstChild);
+  chatHistories.unshift({ id, title, createdAt: id, messages: [] });
+  _saveAllSessions();
+  renderSidebar();
 }
 
 /* ── 메시지 생성 ── */
@@ -1162,6 +1252,10 @@ async function sendMessage() {
     history.push({ role: "assistant", content: full });
     if (history.length > 40) history.splice(0, 2);
 
+    // localStorage에 세션 메시지 업데이트
+    const session = chatHistories.find(s => s.id === currentChatId);
+    if (session) { session.messages = [...history]; _saveAllSessions(); }
+
   } catch (err) {
     mdDiv.innerHTML = `<p style="color:#f87171">⚠️ <strong>오류:</strong> ${esc(err.message)}</p>`;
     console.error(err);
@@ -1171,6 +1265,9 @@ async function sendMessage() {
   chatArea.scrollTop = chatArea.scrollHeight;
   inputBox.focus();
 }
+
+// 페이지 로드 시 저장된 세션 목록 표시
+renderSidebar();
 
 /* ── 사이드바 토글 ── */
 function toggleSidebar() {
