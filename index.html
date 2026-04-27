@@ -704,30 +704,35 @@
 
 <script>
 const API_KEYS = [
-  "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",
-  "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",
-  "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",
-  "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",
-  "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",
-  "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",
-  "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",
-  "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",
-  "gsk_1HnHeHtVFkqoypFBMbZqWGdyb3FYzUsLXKbdH7HZtFzlUZJDrIY",
-  "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"
+  { provider: "openrouter", key: "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" },
+  { provider: "openrouter", key: "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" },
+  { provider: "openrouter", key: "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" },
+  { provider: "openrouter", key: "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" },
+  { provider: "openrouter", key: "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" },
+  { provider: "together", key: "tgp_v1_R8RozG-v40ptDvCgHFGH4e5flFdKQWVg6jKzSJQpXPE" },
+  { provider: "together", key: "tgp_v1_xGMeOnOgtwG74XLPhhIRHf4dS8dxRhbuvnhM4k9uQEI" },
+  { provider: "together", key: "tgp_v1_YbtJJ3h4fTM6aODGenz74mq2vx1A7KBo_NW8ZwOiaKI" },
+  { provider: "together", key: "tgp_v1_ixOO0Wg00lGPU3-s6b3codbx-TaoxyPsLuw4BvcR1SY" }
 ];
 let currentKeyIdx = 0;
-const API_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+function getApiUrl() {
+  const provider = API_KEYS[currentKeyIdx].provider;
+  return provider === "together"
+    ? "https://api.together.xyz/v1/chat/completions"
+    : "https://openrouter.ai/api/v1/chat/completions";
+}
 
 /* ── 시스템 프롬프트 ── */
-const SYSTEM_PROMPT = `한국어만 사용. 한자·일어·러시아어 금지. 중학생 전 과목 교육 멘토. 친절하고 전문적 어투.
-답변 형식(항상 준수):
-## 주제
-### 💡 한 줄 요약
-### 🌊 비유
-### 🔬 원리(수식은 $LaTeX$)
-### ⚠️ 주의(오개념)
-### 🎓 한마디
-마지막에 팩트체크.`;
+const SYSTEM_PROMPT = `한국어만 사용. 중학생 교육 멘토. 친절하고 정확한 설명. 마크다운 포맷 필수.
+
+## 📌 한 줄 요약
+
+## 🎯 쉬운 설명 (비유 포함)
+
+## 🔬 핵심 개념 (수식은 $LaTeX$)
+
+## ✅ 팩트체크`;
 
 
 /* ── 파일 첨부 상태 (비활성화) ── */
@@ -1101,63 +1106,79 @@ async function sendMessage() {
   inputBox.style.height = "auto";
   sendBtn.disabled = true;
 
-  // 첫 메시지면 히스토리에 추가
+  appendUser(text, null);
+
+  const row = createAiRow();
+  const mdDiv = row.querySelector(".md");
+
+  mdDiv.innerHTML = `<p style="color:#ff9800"><strong>⚠️ 현재 AI 사용이 제한됐습니다.</strong></p>
+    <p>임시로 <a href="https://chatgpt.com" target="_blank" rel="noopener noreferrer"><strong>https://chatgpt.com</strong></a> 사용 바랍니다.</p>`;
+
+  sendBtn.disabled = false;
+  chatArea.scrollTop = chatArea.scrollHeight;
+  inputBox.focus();
+  return;
+
+  /* ── 이하 코드는 임시 비활성화 ── */
+
   if (history.length === 0) {
     addToHistory(text.slice(0, 36) + (text.length > 36 ? '…' : ''));
   }
 
-  appendUser(text, null);
-
   history.push({ role: "user", content: text });
 
-  const row    = createAiRow();
-  const mdDiv  = row.querySelector(".md");
   const aiBody = row.querySelector(".ai-body");
   let full = "";
   let started = false;
 
-  const MAX_RETRIES = API_KEYS.length;
-  let res, lastErr;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      res = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Authorization": `Bearer ${API_KEYS[currentKeyIdx]}`
-        },
-        body: JSON.stringify({
-          model:       "llama-3.1-8b-instant",
-          messages:    [{ role: "system", content: SYSTEM_PROMPT }, ...history.slice(-4)],
-          temperature: 0.25,
-          max_tokens:  800,
-          stream:      true,
-        })
-      });
-      if (res.status === 429 || res.status === 401) {
-        const errBody = await res.json().catch(() => ({}));
-        lastErr = new Error(errBody?.error?.message || `HTTP ${res.status}`);
-        currentKeyIdx = (currentKeyIdx + 1) % API_KEYS.length;
-        continue;
-      }
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody?.error?.message || `HTTP ${res.status}`);
-      }
-      lastErr = null;
-      break;
-    } catch (fetchErr) {
-      lastErr = fetchErr;
-      break;
-    }
-  }
-  if (lastErr) throw lastErr;
-
   try {
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      ...history.slice(-8)
+    ];
 
-    const reader  = res.body.getReader();
+    let res, lastErr;
+    const MAX_RETRIES = API_KEYS.length;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        res = await fetch(getApiUrl(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${API_KEYS[currentKeyIdx].key}`
+          },
+          body: JSON.stringify({
+            model: "openai/gpt-3.5-turbo",
+            messages,
+            temperature: 0.25,
+            max_tokens: 850,
+            stream: true
+          })
+        });
+
+        if (res.status === 429 || res.status === 401) {
+          const errBody = await res.json().catch(() => ({}));
+          lastErr = new Error(errBody?.error?.message || `HTTP ${res.status}`);
+          currentKeyIdx = (currentKeyIdx + 1) % API_KEYS.length;
+          continue;
+        }
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody?.error?.message || `HTTP ${res.status}`);
+        }
+        lastErr = null;
+        break;
+      } catch (fetchErr) {
+        lastErr = fetchErr;
+        break;
+      }
+    }
+    if (lastErr) throw lastErr;
+
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
+    let started = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -1198,7 +1219,6 @@ async function sendMessage() {
     history.push({ role: "assistant", content: full });
     if (history.length > 40) history.splice(0, 2);
 
-    // localStorage에 세션 메시지 업데이트
     const session = chatHistories.find(s => s.id === currentChatId);
     if (session) { session.messages = [...history]; _saveAllSessions(); }
 
