@@ -695,7 +695,10 @@ ${truncatedResults}
                 try {
                   const data = JSON.parse(jsonStr);
                   const content = data.choices?.[0]?.delta?.content;
-                  if (content) fullResponse += content;
+                  // reasoning 필드는 무시 (NVIDIA API에서 include_reasoning: false 미지원)
+                  if (content && !data.choices?.[0]?.delta?.reasoning) {
+                    fullResponse += content;
+                  }
                 } catch (e) {
                   console.error(`[Streaming] JSON 파싱 에러:`, e.message);
                 }

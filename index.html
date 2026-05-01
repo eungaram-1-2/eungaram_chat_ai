@@ -1236,7 +1236,8 @@ async function sendMessage() {
           console.log('JSON_PARSE:', data);
           const content = data.choices?.[0]?.delta?.content;
 
-          if (content) {
+          // reasoning 필드는 무시 (NVIDIA API 버그 우회)
+          if (content !== undefined && content !== null && !data.choices?.[0]?.delta?.reasoning) {
             console.log('CONTENT_RECEIVED:', { text: content, accumulated: full + content });
             if (!started) {
               mdDiv.innerHTML = "";
