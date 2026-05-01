@@ -601,43 +601,40 @@ export default {
       // === 문서 데이터 강제 주입 (절대 진실로 취급) ===
       let enhancedMessages = [...messages];
 
-      // 검색 결과가 50자 이상이고 "[검색 결과 없음]"을 포함하지 않으면 절대 진실로 강제 주입
+      // 검색 결과 여부에 관계없이 항상 강제 주입 (검색 실패해도 데이터 명시)
+      let factDataContent = "";
+
       if (searchResults && searchResults.length >= 50 && !searchResults.includes("[검색 결과 없음]")) {
-        const truncatedResults = searchResults.length > 1200 ? searchResults.substring(0, 1200) + "\n[이하 생략]" : searchResults;
+        // 검색 성공 케이스: 실제 검색 결과 사용
+        factDataContent = searchResults.length > 1200 ? searchResults.substring(0, 1200) + "\n[이하 생략]" : searchResults;
+        console.log(`[AI Input] 검색 성공 - 데이터 길이: ${factDataContent.length}자`);
+      } else {
+        // 검색 실패 또는 결과 부족: 강제로 기본 데이터 주입 (절대 정보 부재 상황을 만들지 말 것)
+        factDataContent = `[검색 결과 요약]
+- 은가람중학교: 경기도 하남시 미사강변도시에 위치한 중학교
+- 개발자: 주혁이 (은가람중학교 1학년)`;
+        console.log(`[AI Input] 검색 실패 → 기본 데이터로 폴백`);
+      }
 
-        const mandatoryFactsContext = `[반드시 읽어야 할 절대적 팩트 데이터]
+      const mandatoryFactsContext = `[반드시 읽어야 할 절대적 팩트 데이터]
 
-아래는 주혁이가 제공한 하남 미사 은가람중학교 관련 공식 데이터입니다.
+아래는 주혁이가 제공한 데이터입니다.
 이것은 너의 학습 데이터보다 100% 우선합니다.
-인터넷 검색이 아니라, 공식 문서다.
 
 ========================================
-${truncatedResults}
+${factDataContent}
 ========================================
 
 [필수 실행 규칙]
 1. 위 데이터만으로 답변하라. 다른 것은 추가하지 마라.
 2. 이 데이터가 너의 내부 지식과 충돌하면, 데이터를 따라라.
-3. 데이터가 없으면 "정확한 정보를 확인할 수 없습니다"라고 명시.
+3. 데이터에 없는 질문은 "정확한 정보를 확인할 수 없습니다"라고 명시.
 4. 절대 가정, 추측, 지어내기 금지.
 5. 절대 "검색했습니다", "조회했습니다" 같은 말 금지.
-6. 절대 "이 정보가 맞는지 확인해보겠습니다" 같은 연기 금지.`;
+6. 절대 연기 금지. 팩트만 말하라.`;
 
-        console.log(`[AI Input] 팩트 데이터 강제 주입 (원본: ${searchResults.length}자, 전달: ${truncatedResults.length}자)`);
-        enhancedMessages.push({ role: "system", content: mandatoryFactsContext });
-      } else {
-        const safetyNetContext = `[반드시 읽어야 할 절대적 팩트 데이터] 없음
-========================================
-주혁이가 제공한 공식 데이터를 받지 못했습니다.
-
-[필수 실행 규칙]
-- "정확한 정보를 확인할 수 없습니다"라고 명시하세요.
-- 내부 지식으로 가정하지 마세요.
-- 절대 지어내지 마세요.
-- "검색", "조회" 같은 말 금지.`;
-        console.log(`[AI Input] 데이터 부재 - 안전 모드 (결과 길이: ${searchResults ? searchResults.length : 0}자)`);
-        enhancedMessages.push({ role: "system", content: safetyNetContext });
-      }
+      console.log(`[AI Input] 팩트 데이터 강제 주입 (크기: ${factDataContent.length}자)`);
+      enhancedMessages.push({ role: "system", content: mandatoryFactsContext });
 
       console.log(`[AI Input] ========== 최종 메시지 배열 분석 ==========`);
       console.log(`[AI Input] 총 메시지 수: ${enhancedMessages.length}`);
