@@ -508,7 +508,8 @@ function extractSearchKeywords(question) {
   const hasSearchKeyword = searchIndicators.some(k => question.includes(k));
   if (!hasSearchKeyword) return null;
 
-  const matches = question.match(/[\p{L}\p{N}가-힣]+/gu) || [];
+  // 한글/영문 단어를 제대로 분리 (공백 또는 특수문자로 구분)
+  const matches = question.split(/[\s\.,!?;:\-()]+/).filter(w => w.length > 0);
   return matches.slice(0, 5).join(" ");
 }
 
@@ -695,10 +696,7 @@ ${truncatedResults}
                 try {
                   const data = JSON.parse(jsonStr);
                   const content = data.choices?.[0]?.delta?.content;
-                  // reasoning 필드는 무시 (NVIDIA API에서 include_reasoning: false 미지원)
-                  if (content && !data.choices?.[0]?.delta?.reasoning) {
-                    fullResponse += content;
-                  }
+                  if (content) fullResponse += content;
                 } catch (e) {
                   console.error(`[Streaming] JSON 파싱 에러:`, e.message);
                 }
