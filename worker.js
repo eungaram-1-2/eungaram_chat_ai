@@ -24,36 +24,35 @@ const COMMON_HEADERS = {
   "Upgrade-Insecure-Requests": "1"
 };
 
-// === AI 시스템 프롬프트 (주석 처리됨) ===
-// const CORE_SYSTEM_PROMPT = `너는 '문서 분석가'다. 절대 검색하는 AI가 아니다.
-//
-// [핵심 역할 - 반드시 따를 것]
-// 너는 사용자가 제공한 텍스트 파일(문서)을 읽고 분석하고 요약하는 분석가다.
-// 인터넷 검색을 하지 마. 검색하는 척도 하지 마.
-// "검색", "찾아보겠습니다", "조회", "검색했습니다" 같은 말을 절대 하지 마.
-// 인터넷이나 외부 소스를 언급하지 마.
-//
-// [시스템 언어: 한국어 고정]
-// 모든 답변은 순수 한국어로만.
-// 영어로 생각하지 마. 영어 추론 과정을 절대 출력하지 마.
-// 첫 글자부터 한국어로 시작. (예: "## 📌 한 줄 요약"부터 바로 시작)
-//
-// [데이터 처리 - 필수 규칙]
-// 사용자가 제공한 [반드시 읽어야 할 절대적 팩트 데이터]를 읽어라.
-// 이 데이터가 절대 진실이다. 내 학습 데이터(2024년 이전)는 무시하라.
-// - 데이터가 있으면 → 그것을 기반으로만 답변
-// - 데이터가 없으면 → "정확한 정보를 확인할 수 없습니다"라고 명시
-//
-// [답변 형식 - 절대 규칙]
-// 1. 어떤 생각도 출력하지 마. 바로 답변 시작.
-// 2. 첫 줄은 반드시 "## 📌 한 줄 요약"으로 시작.
-// 3. 그 다음 "## 🎯 설명", "## ✅ 출처"로 계속.
-// 4. 추론 과정, 생각, 영어는 절대 금지.
-//
-// [배경]
-// 경기도 하남시 미사강변도시 은가람중학교 1학년을 위한 AI다.
-// 주혁이가 이 사이트 개발자다.
-// `;
+// === AI 시스템 프롬프트 (문서 분석가 페르소나) ===
+const CORE_SYSTEM_PROMPT = `너는 '문서 분석가'다. 절대 검색하는 AI가 아니다.
+
+[핵심 역할 - 반드시 따를 것]
+너는 사용자가 제공한 텍스트 파일(문서)을 읽고 분석하고 요약하는 분석가다.
+인터넷 검색을 하지 마. 검색하는 척도 하지 마.
+"검색", "찾아보겠습니다", "조회", "검색했습니다" 같은 말을 절대 하지 마.
+인터넷이나 외부 소스를 언급하지 마.
+
+[시스템 언어: 한국어 고정]
+모든 답변은 순수 한국어로만.
+영어로 생각하지 마. 영어 추론 과정을 절대 출력하지 마.
+첫 글자부터 한국어로 시작. (예: "## 📌 한 줄 요약"부터 바로 시작)
+
+[데이터 처리 - 필수 규칙]
+사용자가 제공한 [반드시 읽어야 할 절대적 팩트 데이터]를 읽어라.
+이 데이터가 절대 진실이다. 내 학습 데이터(2024년 이전)는 무시하라.
+- 데이터가 있으면 → 그것을 기반으로만 답변
+- 데이터가 없으면 → "정확한 정보를 확인할 수 없습니다"라고 명시
+
+[답변 형식 - 절대 규칙]
+1. 어떤 생각도 출력하지 마. 바로 답변 시작.
+2. 첫 줄은 반드시 "## 📌 한 줄 요약"으로 시작.
+3. 그 다음 "## 🎯 설명", "## ✅ 출처"로 계속.
+4. 추론 과정, 생각, 영어는 절대 금지.
+
+[배경]
+경기도 하남시 미사강변도시 은가람중학교 1학년을 위한 AI다.
+주혁이가 이 사이트 개발자다.`;
 
 // 최소한의 로컬 정보 (은가람중학교 신원만)
 const LOCAL_KNOWLEDGE = {
@@ -558,26 +557,25 @@ export default {
       console.log(`[Request] 요청 시작`);
       console.log(`[Request] 메시지 수: ${messages.length}`);
 
-      // === 시스템 프롬프트 추가 (주석 처리됨 - 웹 검색 기능 비활성화) ===
       // 핵심 SYSTEM_PROMPT 추가 (맨 앞에)
-      // if (!messages.find(m => m.role === "system")) {
-      //   messages.unshift({ role: "system", content: CORE_SYSTEM_PROMPT });
-      // }
+      if (!messages.find(m => m.role === "system")) {
+        messages.unshift({ role: "system", content: CORE_SYSTEM_PROMPT });
+      }
 
-      // [진단용] 강제 테스트 데이터 주입 (주석 처리됨)
-      // const testData = "은가람중학교는 경기도 하남시 미사강변도시에 위치한 중학교입니다. 주혁이는 이 학교 1학년 학생이자 이 AI 사이트 개발자입니다.";
-      // messages.unshift({
-      //   role: "system",
-      //   content: `[진단용 강제 주입 테스트]\n\n${testData}\n\n이 정보가 AI에게 제대로 전달되었는지 확인하는 테스트입니다.`
-      // });
+      // [진단용] 강제 테스트 데이터 주입
+      const testData = "은가람중학교는 경기도 하남시 미사강변도시에 위치한 중학교입니다. 주혁이는 이 학교 1학년 학생이자 이 AI 사이트 개발자입니다.";
+      console.log(`[TEST_INJECTION] 강제 테스트 데이터 주입:`, testData);
+      messages.unshift({
+        role: "system",
+        content: `[진단용 강제 주입 테스트]\n\n${testData}\n\n이 정보가 AI에게 제대로 전달되었는지 확인하는 테스트입니다.`
+      });
 
       const userMessages = messages.filter(m => m.role === "user");
       const userQuestion = userMessages[userMessages.length - 1]?.content || "";
       console.log(`[Request] 사용자 질문: "${userQuestion}"`);
       console.log(`[Request] 질문 길이: ${userQuestion.length}자`);
 
-      // === 웹 서핑 기능 임시 비활성화 ===
-      // 웹 검색 기능은 임시로 주석 처리됨
+      // === 탐정형 검색 (자율 최적화 + 교차 검증) ===
       let searchResults = "";
       const searchKeywords = extractSearchKeywords(userQuestion);
 
@@ -590,24 +588,56 @@ export default {
           searchResults = searchLocalKnowledge(searchKeywords);
         }
 
-        // 2단계: 웹 검색 기능 임시 비활성화
-        // if (!searchResults) {
-        //   console.log(`[Search] 크로스 검증 검색 시작`);
-        //   searchResults = await searchWithCrossVerification(searchKeywords);
-        //   console.log(`[Search] 크로스 검증 검색 완료 - 결과 길이: ${searchResults.length}자`);
-        // }
+        // 2단계: 다른 정보는 검색으로만 (Hard-coding 금지)
+        if (!searchResults) {
+          console.log(`[Search] 크로스 검증 검색 시작`);
+          searchResults = await searchWithCrossVerification(searchKeywords);
+          console.log(`[Search] 크로스 검증 검색 완료 - 결과 길이: ${searchResults.length}자`);
+        }
       } else {
         console.log(`[Search] 검색 키워드 추출 실패 (검색 불필요)`);
       }
 
-      // === 문서 데이터 강제 주입 (주석 처리됨) ===
+      // === 문서 데이터 강제 주입 (절대 진실로 취급) ===
       let enhancedMessages = [...messages];
 
-      // if (searchResults && searchResults.length >= 50 && !searchResults.includes("[검색 결과 없음]")) {
-      //   const factDataContent = searchResults.length > 1200 ? searchResults.substring(0, 1200) + "\n[이하 생략]" : searchResults;
-      //   const mandatoryFactsContext = `[반드시 읽어야 할 절대적 팩트 데이터]\n${factDataContent}`;
-      //   enhancedMessages.push({ role: "system", content: mandatoryFactsContext });
-      // }
+      // 검색 결과가 50자 이상이고 "[검색 결과 없음]"을 포함하지 않으면 절대 진실로 강제 주입
+      if (searchResults && searchResults.length >= 50 && !searchResults.includes("[검색 결과 없음]")) {
+        const truncatedResults = searchResults.length > 1200 ? searchResults.substring(0, 1200) + "\n[이하 생략]" : searchResults;
+
+        const mandatoryFactsContext = `[반드시 읽어야 할 절대적 팩트 데이터]
+
+아래는 주혁이가 제공한 하남 미사 은가람중학교 관련 공식 데이터입니다.
+이것은 너의 학습 데이터보다 100% 우선합니다.
+인터넷 검색이 아니라, 공식 문서다.
+
+========================================
+${truncatedResults}
+========================================
+
+[필수 실행 규칙]
+1. 위 데이터만으로 답변하라. 다른 것은 추가하지 마라.
+2. 이 데이터가 너의 내부 지식과 충돌하면, 데이터를 따라라.
+3. 데이터가 없으면 "정확한 정보를 확인할 수 없습니다"라고 명시.
+4. 절대 가정, 추측, 지어내기 금지.
+5. 절대 "검색했습니다", "조회했습니다" 같은 말 금지.
+6. 절대 "이 정보가 맞는지 확인해보겠습니다" 같은 연기 금지.`;
+
+        console.log(`[AI Input] 팩트 데이터 강제 주입 (원본: ${searchResults.length}자, 전달: ${truncatedResults.length}자)`);
+        enhancedMessages.push({ role: "system", content: mandatoryFactsContext });
+      } else {
+        const safetyNetContext = `[반드시 읽어야 할 절대적 팩트 데이터] 없음
+========================================
+주혁이가 제공한 공식 데이터를 받지 못했습니다.
+
+[필수 실행 규칙]
+- "정확한 정보를 확인할 수 없습니다"라고 명시하세요.
+- 내부 지식으로 가정하지 마세요.
+- 절대 지어내지 마세요.
+- "검색", "조회" 같은 말 금지.`;
+        console.log(`[AI Input] 데이터 부재 - 안전 모드 (결과 길이: ${searchResults ? searchResults.length : 0}자)`);
+        enhancedMessages.push({ role: "system", content: safetyNetContext });
+      }
 
       console.log(`[AI Input] ========== 최종 메시지 배열 분석 ==========`);
       console.log(`[AI Input] 총 메시지 수: ${enhancedMessages.length}`);
@@ -691,14 +721,6 @@ export default {
               const { done, value } = await reader.read();
               if (done) {
                 console.log(`[Streaming] 완료 - 총 청크: ${chunkCount}, 응답 길이: ${fullResponse.length}자`);
-
-                // === 답변 끝에 자동으로 disclaimer 추가 ===
-                const disclaimer = "\n\n# 이 답변은 웹 검색등을 지원하지 않으므로, 실시간 정보 등은 가져오지 못합니다. 따라서 부정확할수도 있다는 점 양해 바랍니다.";
-                const disclaimerMessage = `data: ${JSON.stringify({choices:[{delta:{content:disclaimer}}]})}\n\n`;
-                await writer.write(new TextEncoder().encode(disclaimerMessage));
-                fullResponse += disclaimer;
-                console.log(`[Streaming] Disclaimer 추가 완료`);
-
                 break;
               }
 
