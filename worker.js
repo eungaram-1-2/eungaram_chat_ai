@@ -24,35 +24,35 @@ const COMMON_HEADERS = {
   "Upgrade-Insecure-Requests": "1"
 };
 
-// === AI 시스템 프롬프트 (데이터 분석가 페르소나) ===
-const CORE_SYSTEM_PROMPT = `너는 데이터 분석가다. 검색하는 척하는 AI가 아니다.
+// === AI 시스템 프롬프트 (문서 분석가 페르소나) ===
+const CORE_SYSTEM_PROMPT = `너는 '문서 분석가'다. 절대 검색하는 AI가 아니다.
 
-[역할 정의]
-너는 제공된 최신 검색 데이터를 객관적으로 읽고 요약하는 분석가이다.
-"Searching...", "Let me search", "검색해볼게" 같은 연기는 절대 하지 마.
-추론 과정을 텍스트로 출력하지 마. 최종 답변만 즉시 출력하라.
-절대로 영어로 혼잣말하지 마. 첫 글자부터 한국어로 답변 시작.
+[핵심 역할 - 반드시 따를 것]
+너는 사용자가 제공한 텍스트 파일(문서)을 읽고 분석하고 요약하는 분석가다.
+인터넷 검색을 하지 마. 검색하는 척도 하지 마.
+"검색", "찾아보겠습니다", "조회", "검색했습니다" 같은 말을 절대 하지 마.
+인터넷이나 외부 소스를 언급하지 마.
 
-[데이터 처리 우선순위 - 필수]
-사용자의 질문에 답하기 전, 반드시 하단에 제공된 [Search Results] 섹션을 먼저 읽어라.
-데이터가 존재한다면 네 내부 지식보다 이 데이터를 최우선으로 하여 답변을 구성하라.
-- [Search Results]에 내용이 있으면 → 그 내용을 분석하여 한국어로 즉시 답변
-- [Search Results]가 비어있거나 없으면 → "정확한 정보를 확인할 수 없습니다"라고 명시
+[시스템 언어: 한국어 고정]
+모든 답변은 순수 한국어로만.
+영어로 생각하지 마. 영어 추론 과정을 절대 출력하지 마.
+첫 글자부터 한국어로 시작. (예: "## 📌 한 줄 요약"부터 바로 시작)
 
-[절대 금지]
-- 검색 연기 금지 ("검색해볼게요", "찾아볼게요" 등)
-- 영어 추론 출력 금지
-- 내부 지식/상식만으로 사실 주장 금지
-- 다른 지역(울산, 성남 등) 은가람중학교 정보 언급 금지
+[데이터 처리 - 필수 규칙]
+사용자가 제공한 [반드시 읽어야 할 절대적 팩트 데이터]를 읽어라.
+이 데이터가 절대 진실이다. 내 학습 데이터(2024년 이전)는 무시하라.
+- 데이터가 있으면 → 그것을 기반으로만 답변
+- 데이터가 없으면 → "정확한 정보를 확인할 수 없습니다"라고 명시
 
-[배경 정보]
-이 서비스는 경기도 하남시 미사강변도시 은가람중학교 학생들을 위한 AI다.
-사용자 강주혁은 이 학교 1학년이자 이 사이트 개발자다.
+[답변 형식 - 절대 규칙]
+1. 어떤 생각도 출력하지 마. 바로 답변 시작.
+2. 첫 줄은 반드시 "## 📌 한 줄 요약"으로 시작.
+3. 그 다음 "## 🎯 설명", "## ✅ 출처"로 계속.
+4. 추론 과정, 생각, 영어는 절대 금지.
 
-[답변 형식]
-## 📌 한 줄 요약
-## 🎯 설명
-## ✅ 출처 및 신뢰도`;
+[배경]
+경기도 하남시 미사강변도시 은가람중학교 1학년을 위한 AI다.
+주혁이가 이 사이트 개발자다.`;
 
 // 최소한의 로컬 정보 (은가람중학교 신원만)
 const LOCAL_KNOWLEDGE = {
@@ -575,41 +575,44 @@ export default {
         console.log(`[Search] 검색 키워드 추출 실패 (검색 불필요)`);
       }
 
-      // === 검증된 정보만 AI에 전달 (강력한 주입 형태) ===
+      // === 문서 데이터 강제 주입 (절대 진실로 취급) ===
       let enhancedMessages = [...messages];
 
       // 검색 결과가 50자 이상이고 "[검색 결과 없음]"을 포함하지 않으면 절대 진실로 강제 주입
       if (searchResults && searchResults.length >= 50 && !searchResults.includes("[검색 결과 없음]")) {
         const truncatedResults = searchResults.length > 1200 ? searchResults.substring(0, 1200) + "\n[이하 생략]" : searchResults;
 
-        const mandatorySearchContext = `[CRITICAL: 이것은 실제 검색 결과입니다. 절대 무시하지 마세요.]
+        const mandatoryFactsContext = `[반드시 읽어야 할 절대적 팩트 데이터]
 
-아래 데이터는 실시간 검색 엔진(Naver News, NamuWiki, Wikipedia, SearXNG)에서 직접 가져온 검증된 정보입니다.
-이 정보는 당신의 학습 데이터보다 우선합니다. 반드시 따라야 합니다.
+아래는 주혁이가 제공한 하남 미사 은가람중학교 관련 공식 데이터입니다.
+이것은 너의 학습 데이터보다 100% 우선합니다.
+인터넷 검색이 아니라, 공식 문서다.
 
-[Search Results - 실제 데이터]
 ========================================
 ${truncatedResults}
 ========================================
 
-[의무사항]
-1. 위의 [Search Results]를 기반으로만 답변하세요.
-2. 이 데이터가 없으면 내부 지식을 사용하지 마세요.
-3. 검색 결과가 없으면 "정확한 정보를 확인할 수 없습니다"라고 명시하세요.
-4. 절대 가정하거나 지어내지 마세요.`;
+[필수 실행 규칙]
+1. 위 데이터만으로 답변하라. 다른 것은 추가하지 마라.
+2. 이 데이터가 너의 내부 지식과 충돌하면, 데이터를 따라라.
+3. 데이터가 없으면 "정확한 정보를 확인할 수 없습니다"라고 명시.
+4. 절대 가정, 추측, 지어내기 금지.
+5. 절대 "검색했습니다", "조회했습니다" 같은 말 금지.
+6. 절대 "이 정보가 맞는지 확인해보겠습니다" 같은 연기 금지.`;
 
-        console.log(`[AI Input] 검색 결과 강제 주입 (원본: ${searchResults.length}자, 전달: ${truncatedResults.length}자)`);
-        enhancedMessages.push({ role: "system", content: mandatorySearchContext });
+        console.log(`[AI Input] 팩트 데이터 강제 주입 (원본: ${searchResults.length}자, 전달: ${truncatedResults.length}자)`);
+        enhancedMessages.push({ role: "system", content: mandatoryFactsContext });
       } else {
-        const safetyNetContext = `[Search Results] 검색 결과 없음
+        const safetyNetContext = `[반드시 읽어야 할 절대적 팩트 데이터] 없음
 ========================================
-실시간 검색 결과를 가져오지 못했습니다.
+주혁이가 제공한 공식 데이터를 받지 못했습니다.
 
-[의무사항]
+[필수 실행 규칙]
 - "정확한 정보를 확인할 수 없습니다"라고 명시하세요.
 - 내부 지식으로 가정하지 마세요.
-- 절대 지어내지 마세요.`;
-        console.log(`[AI Input] 검색 실패 - 안전망 주입 (검색 결과 길이: ${searchResults ? searchResults.length : 0}자)`);
+- 절대 지어내지 마세요.
+- "검색", "조회" 같은 말 금지.`;
+        console.log(`[AI Input] 데이터 부재 - 안전 모드 (결과 길이: ${searchResults ? searchResults.length : 0}자)`);
         enhancedMessages.push({ role: "system", content: safetyNetContext });
       }
 
@@ -649,7 +652,7 @@ ${truncatedResults}
           temperature: 0.6,
           top_p: 0.9,
           presence_penalty: 0.6,
-          max_tokens: body.max_tokens || 2000,
+          max_tokens: 1500,
           stream: true,
           include_reasoning: false,
         }),
