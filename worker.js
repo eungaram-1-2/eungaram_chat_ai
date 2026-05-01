@@ -575,7 +575,8 @@ export default {
       console.log(`[Request] 사용자 질문: "${userQuestion}"`);
       console.log(`[Request] 질문 길이: ${userQuestion.length}자`);
 
-      // === 탐정형 검색 (자율 최적화 + 교차 검증) ===
+      // === 웹 서핑 기능 임시 비활성화 ===
+      // 웹 검색 기능은 임시로 주석 처리됨
       let searchResults = "";
       const searchKeywords = extractSearchKeywords(userQuestion);
 
@@ -588,12 +589,12 @@ export default {
           searchResults = searchLocalKnowledge(searchKeywords);
         }
 
-        // 2단계: 다른 정보는 검색으로만 (Hard-coding 금지)
-        if (!searchResults) {
-          console.log(`[Search] 크로스 검증 검색 시작`);
-          searchResults = await searchWithCrossVerification(searchKeywords);
-          console.log(`[Search] 크로스 검증 검색 완료 - 결과 길이: ${searchResults.length}자`);
-        }
+        // 2단계: 웹 검색 기능 임시 비활성화
+        // if (!searchResults) {
+        //   console.log(`[Search] 크로스 검증 검색 시작`);
+        //   searchResults = await searchWithCrossVerification(searchKeywords);
+        //   console.log(`[Search] 크로스 검증 검색 완료 - 결과 길이: ${searchResults.length}자`);
+        // }
       } else {
         console.log(`[Search] 검색 키워드 추출 실패 (검색 불필요)`);
       }
@@ -718,6 +719,14 @@ ${factDataContent}
               const { done, value } = await reader.read();
               if (done) {
                 console.log(`[Streaming] 완료 - 총 청크: ${chunkCount}, 응답 길이: ${fullResponse.length}자`);
+
+                // === 답변 끝에 자동으로 disclaimer 추가 ===
+                const disclaimer = "\n\n# 이 답변은 웹 검색등을 지원하지 않으므로, 실시간 정보 등은 가져오지 못합니다. 따라서 부정확할수도 있다는 점 양해 바랍니다.";
+                const disclaimerMessage = `data: ${JSON.stringify({choices:[{delta:{content:disclaimer}}]})}\n\n`;
+                await writer.write(new TextEncoder().encode(disclaimerMessage));
+                fullResponse += disclaimer;
+                console.log(`[Streaming] Disclaimer 추가 완료`);
+
                 break;
               }
 
