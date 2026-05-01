@@ -264,26 +264,35 @@ async function searchNaverNews(query) {
 
     const text = await response.text();
     console.log(`[Naver News] 응답 크기: ${text.length}자`);
+    console.log(`[Naver News] 응답 미리보기:`, text.substring(0, 300));
 
     const titleMatches = text.match(/<title>([^<]{10,200})<\/title>/g) || [];
     console.log(`[Naver News] 추출된 제목 수: ${titleMatches.length}`);
+    if (titleMatches.length > 0) {
+      console.log(`[Naver News] 첫 3개 제목:`, titleMatches.slice(0, 3));
+    }
 
     const results = ["[Naver News]"];
 
     for (let i = 1; i < Math.min(titleMatches.length, 4); i++) {
       const title = titleMatches[i]?.replace(/<title>|<\/title>/g, "").trim();
+      console.log(`[Naver News] 처리 중: i=${i}, title="${title}", 길이=${title?.length}`);
       if (title && title.length > 5 && !title.includes("검색결과")) {
         results.push(`- ${title}`);
+        console.log(`[Naver News] ✓ 추가됨: ${title.substring(0, 50)}`);
+      } else {
+        console.log(`[Naver News] ✗ 필터링됨: ${title?.substring(0, 50)}`);
       }
     }
 
     const resultText = results.join("\n");
-    console.log(`[Naver News] 최종 텍스트 길이: ${resultText.length}자`);
+    console.log(`[Naver News] 최종 결과: ${results.length}개 항목, ${resultText.length}자`);
 
     if (results.length > 1) {
+      console.log(`[Naver News] 반환: OK`);
       return resultText;
     } else {
-      console.log(`[Naver News] 필터링 후 결과 없음`);
+      console.log(`[Naver News] 반환: NULL (항목 부족)`);
       return null;
     }
   } catch (e) {
@@ -463,20 +472,26 @@ async function searchWithCrossVerification(keyword) {
       // 결과를 신뢰도 시스템에 추가
       let successCount = 0;
       results.forEach((result, index) => {
+        const sourceName = sourceNames[index];
+        console.log(`[CrossVerify] [${sourceName}] 원본 응답:`, result ? `${result.substring(0, 100)}...` : "NULL/EMPTY");
+
         if (result) {
           successCount++;
-          const sourceName = sourceNames[index];
-          console.log(`[CrossVerify] [${sourceName}] 검색 성공`);
+          console.log(`[CrossVerify] [${sourceName}] 검색 성공 - 길이: ${result.length}자`);
 
           // 결과에서 실제 내용 추출 (헤더 제거)
           const lines = result.split('\n');
+          let lineCount = 0;
           lines.forEach(line => {
             if (line.startsWith('- ') && line.length > 3) {
               analyzer.addResult(sourceName, line.substring(2));
+              lineCount++;
+              console.log(`[CrossVerify] [${sourceName}] 라인 ${lineCount}: ${line.substring(0, 80)}`);
             }
           });
+          console.log(`[CrossVerify] [${sourceName}] 총 ${lineCount}개 라인 추출`);
         } else {
-          console.log(`[CrossVerify] [${sourceNames[index]}] 검색 실패 (결과 없음)`);
+          console.log(`[CrossVerify] [${sourceName}] 검색 실패 - 응답 없음`);
         }
       });
 
@@ -547,6 +562,14 @@ export default {
         messages.unshift({ role: "system", content: CORE_SYSTEM_PROMPT });
       }
 
+      // [진단용] 강제 테스트 데이터 주입
+      const testData = "은가람중학교는 경기도 하남시 미사강변도시에 위치한 중학교입니다. 주혁이는 이 학교 1학년 학생이자 이 AI 사이트 개발자입니다.";
+      console.log(`[TEST_INJECTION] 강제 테스트 데이터 주입:`, testData);
+      messages.unshift({
+        role: "system",
+        content: `[진단용 강제 주입 테스트]\n\n${testData}\n\n이 정보가 AI에게 제대로 전달되었는지 확인하는 테스트입니다.`
+      });
+
       const userMessages = messages.filter(m => m.role === "user");
       const userQuestion = userMessages[userMessages.length - 1]?.content || "";
       console.log(`[Request] 사용자 질문: "${userQuestion}"`);
@@ -616,20 +639,33 @@ ${truncatedResults}
         enhancedMessages.push({ role: "system", content: safetyNetContext });
       }
 
-      console.log(`[AI Input] 최종 메시지 수: ${enhancedMessages.length}`);
-      console.log(`[AI Input] 시스템 메시지 총 개수: ${enhancedMessages.filter(m => m.role === "system").length}`);
+      console.log(`[AI Input] ========== 최종 메시지 배열 분석 ==========`);
+      console.log(`[AI Input] 총 메시지 수: ${enhancedMessages.length}`);
+      console.log(`[AI Input] 시스템 메시지: ${enhancedMessages.filter(m => m.role === "system").length}`);
+      console.log(`[AI Input] 사용자 메시지: ${enhancedMessages.filter(m => m.role === "user").length}`);
+      console.log(`[AI Input] 어시스턴트 메시지: ${enhancedMessages.filter(m => m.role === "assistant").length}`);
+
+      // 각 시스템 메시지의 내용 로깅
+      enhancedMessages.forEach((msg, idx) => {
+        if (msg.role === "system") {
+          console.log(`[AI Input] [${idx}] SYSTEM 메시지 (${msg.content?.length || 0}자):`);
+          console.log(`[AI Input]   키워드: ${
+            msg.content.includes("[반드시 읽어야 할 절대적 팩트 데이터]") ? "팩트 데이터" :
+            msg.content.includes("문서 분석가") ? "CORE_SYSTEM_PROMPT" :
+            msg.content.includes("테스트") ? "테스트 데이터" :
+            "기타"
+          }`);
+          console.log(`[AI Input]   미리보기: ${msg.content.substring(0, 150)}`);
+        }
+      });
 
       // 최종 메시지 크기 계산 및 로깅
       const totalContextLength = enhancedMessages
         .filter(m => m.role === "system")
         .reduce((sum, m) => sum + (m.content?.length || 0), 0);
 
-      // 마지막 시스템 메시지 (검색 결과 또는 안전망) 내용 로깅
-      const lastSystemMessage = enhancedMessages.find(m => m.role === "system" && (m.content.includes("[현재 인터넷 검색 결과]") || m.content.includes("[기본 배경 정보]")));
-      if (lastSystemMessage) {
-        console.log(`[AI Input] AI에 주입된 컨텍스트 유형: ${lastSystemMessage.content.includes("[현재 인터넷 검색 결과]") ? "검색 결과" : "안전망 데이터"}`);
-        console.log(`[AI Input] 컨텍스트 미리보기: ${lastSystemMessage.content.substring(0, 300)}`);
-      }
+      console.log(`[AI Input] 총 시스템 컨텍스트 길이: ${totalContextLength}자`);
+      console.log(`[AI Input] ==========================================`);
 
       console.log(`[NVIDIA] =========== API 호출 준비 ===========`);
       console.log(`[NVIDIA] 엔드포인트: ${NVIDIA_ENDPOINT}`);
