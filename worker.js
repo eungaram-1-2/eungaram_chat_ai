@@ -564,13 +564,12 @@ export default {
       //   messages.unshift({ role: "system", content: CORE_SYSTEM_PROMPT });
       // }
 
-      // [진단용] 강제 테스트 데이터 주입
-      const testData = "은가람중학교는 경기도 하남시 미사강변도시에 위치한 중학교입니다. 주혁이는 이 학교 1학년 학생이자 이 AI 사이트 개발자입니다.";
-      console.log(`[TEST_INJECTION] 강제 테스트 데이터 주입:`, testData);
-      messages.unshift({
-        role: "system",
-        content: `[진단용 강제 주입 테스트]\n\n${testData}\n\n이 정보가 AI에게 제대로 전달되었는지 확인하는 테스트입니다.`
-      });
+      // [진단용] 강제 테스트 데이터 주입 (주석 처리됨)
+      // const testData = "은가람중학교는 경기도 하남시 미사강변도시에 위치한 중학교입니다. 주혁이는 이 학교 1학년 학생이자 이 AI 사이트 개발자입니다.";
+      // messages.unshift({
+      //   role: "system",
+      //   content: `[진단용 강제 주입 테스트]\n\n${testData}\n\n이 정보가 AI에게 제대로 전달되었는지 확인하는 테스트입니다.`
+      // });
 
       const userMessages = messages.filter(m => m.role === "user");
       const userQuestion = userMessages[userMessages.length - 1]?.content || "";
@@ -601,43 +600,14 @@ export default {
         console.log(`[Search] 검색 키워드 추출 실패 (검색 불필요)`);
       }
 
-      // === 문서 데이터 강제 주입 (절대 진실로 취급) ===
+      // === 문서 데이터 강제 주입 (주석 처리됨) ===
       let enhancedMessages = [...messages];
 
-      // 검색 결과 여부에 관계없이 항상 강제 주입 (검색 실패해도 데이터 명시)
-      let factDataContent = "";
-
-      if (searchResults && searchResults.length >= 50 && !searchResults.includes("[검색 결과 없음]")) {
-        // 검색 성공 케이스: 실제 검색 결과 사용
-        factDataContent = searchResults.length > 1200 ? searchResults.substring(0, 1200) + "\n[이하 생략]" : searchResults;
-        console.log(`[AI Input] 검색 성공 - 데이터 길이: ${factDataContent.length}자`);
-      } else {
-        // 검색 실패 또는 결과 부족: 강제로 기본 데이터 주입 (절대 정보 부재 상황을 만들지 말 것)
-        factDataContent = `[검색 결과 요약]
-- 은가람중학교: 경기도 하남시 미사강변도시에 위치한 중학교
-- 개발자: 주혁이 (은가람중학교 1학년)`;
-        console.log(`[AI Input] 검색 실패 → 기본 데이터로 폴백`);
-      }
-
-      const mandatoryFactsContext = `[반드시 읽어야 할 절대적 팩트 데이터]
-
-아래는 주혁이가 제공한 데이터입니다.
-이것은 너의 학습 데이터보다 100% 우선합니다.
-
-========================================
-${factDataContent}
-========================================
-
-[필수 실행 규칙]
-1. 위 데이터만으로 답변하라. 다른 것은 추가하지 마라.
-2. 이 데이터가 너의 내부 지식과 충돌하면, 데이터를 따라라.
-3. 데이터에 없는 질문은 "정확한 정보를 확인할 수 없습니다"라고 명시.
-4. 절대 가정, 추측, 지어내기 금지.
-5. 절대 "검색했습니다", "조회했습니다" 같은 말 금지.
-6. 절대 연기 금지. 팩트만 말하라.`;
-
-      console.log(`[AI Input] 팩트 데이터 강제 주입 (크기: ${factDataContent.length}자)`);
-      enhancedMessages.push({ role: "system", content: mandatoryFactsContext });
+      // if (searchResults && searchResults.length >= 50 && !searchResults.includes("[검색 결과 없음]")) {
+      //   const factDataContent = searchResults.length > 1200 ? searchResults.substring(0, 1200) + "\n[이하 생략]" : searchResults;
+      //   const mandatoryFactsContext = `[반드시 읽어야 할 절대적 팩트 데이터]\n${factDataContent}`;
+      //   enhancedMessages.push({ role: "system", content: mandatoryFactsContext });
+      // }
 
       console.log(`[AI Input] ========== 최종 메시지 배열 분석 ==========`);
       console.log(`[AI Input] 총 메시지 수: ${enhancedMessages.length}`);
