@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
@@ -704,15 +704,7 @@
 
 <script>
 const API_KEYS = [
-  { provider: "openrouter", key: "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" },
-  { provider: "openrouter", key: "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" },
-  { provider: "openrouter", key: "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" },
-  { provider: "openrouter", key: "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" },
-  { provider: "openrouter", key: "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" },
-  { provider: "together", key: "tgp_v1_R8RozG-v40ptDvCgHFGH4e5flFdKQWVg6jKzSJQpXPE" },
-  { provider: "together", key: "tgp_v1_xGMeOnOgtwG74XLPhhIRHf4dS8dxRhbuvnhM4k9uQEI" },
-  { provider: "together", key: "tgp_v1_YbtJJ3h4fTM6aODGenz74mq2vx1A7KBo_NW8ZwOiaKI" },
-  { provider: "together", key: "tgp_v1_ixOO0Wg00lGPU3-s6b3codbx-TaoxyPsLuw4BvcR1SY" }
+  { provider: "nvidia", key: "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" },
 ];
 let currentKeyIdx = 0;
 
@@ -724,15 +716,27 @@ function getApiUrl() {
 }
 
 /* ── 시스템 프롬프트 ── */
-const SYSTEM_PROMPT = `한국어만 사용. 중학생 교육 멘토. 친절하고 정확한 설명. 마크다운 포맷 필수.
+const SYSTEM_PROMPT = `너는 제공된 데이터를 분석하는 중학교 교사 자문가다. 연기하지 말고 정직하게 답변해.
 
+[역할 정의]
+- 너는 데이터 분석가다. 검색하는 척하지 마.
+- 추론 과정을 출력하지 마. 최종 답변만 출력.
+- 첫 글자부터 한국어로 답변 시작. 영어 혼잣말 금지.
+
+[데이터 우선순위]
+사용자 질문에 답하기 전, [Search Results] 섹션이 있으면 그것을 먼저 읽어라.
+- [Search Results]에 데이터가 있으면 → 그것을 분석해 답변
+- [Search Results]가 없거나 비어있으면 → "정확한 정보를 확인할 수 없습니다"라고 명시
+
+[답변 스타일]
+~해요, ~입니다 체로 친절하게 설명. 조사를 생략하지 말고 말해.
+중학교 교과서 정의를 정확히 따를 것.
+
+[답변 형식]
 ## 📌 한 줄 요약
+## 🎯 설명
+## ✅ 출처 및 신뢰도`;
 
-## 🎯 쉬운 설명 (비유 포함)
-
-## 🔬 핵심 개념 (수식은 $LaTeX$)
-
-## ✅ 팩트체크`;
 
 
 /* ── 파일 첨부 상태 (비활성화) ── */
@@ -825,6 +829,29 @@ function renderMD(md) {
     inlines.push(c);
     return `\x00IC${inlines.length - 1}\x00`;
   });
+
+  // LaTeX 수식 보호 (esc()에 의해 깨지지 않도록 먼저 추출)
+  const mathBlocks = [];
+  // \[...\] 블록 수식
+  t = t.replace(/\\\[([\s\S]*?)\\\]/g, (_, math) => {
+    mathBlocks.push({ display: true, content: math });
+    return `\x00MT${mathBlocks.length - 1}\x00`;
+  });
+  // \(...\) 인라인 수식
+  t = t.replace(/\\\(([^\)]*?)\\\)/g, (_, math) => {
+    mathBlocks.push({ display: false, content: math });
+    return `\x00MT${mathBlocks.length - 1}\x00`;
+  });
+  // $$...$$ 블록 수식
+  t = t.replace(/\$\$([\s\S]*?)\$\$/g, (_, math) => {
+    mathBlocks.push({ display: true, content: math });
+    return `\x00MT${mathBlocks.length - 1}\x00`;
+  });
+  // $...$ 인라인 수식
+  t = t.replace(/\$([^$\n]+)\$/g, (_, math) => {
+    mathBlocks.push({ display: false, content: math });
+    return `\x00MT${mathBlocks.length - 1}\x00`;
+  });
   const lines = t.split("\n");
   const out = [];
   let i = 0;
@@ -861,6 +888,11 @@ function renderMD(md) {
   }
   let html = out.join("\n");
   html = html.replace(/\x00IC(\d+)\x00/g, (_, idx) => `<code>${esc(inlines[+idx])}</code>`);
+  // LaTeX 수식 복원 (원본 그대로, 이스케이프 없이)
+  html = html.replace(/\x00MT(\d+)\x00/g, (_, idx) => {
+    const { display, content } = mathBlocks[+idx];
+    return display ? `$$${content}$$` : `$${content}$`;
+  });
   html = html.replace(/\x00CB(\d+)\x00/g, (_, idx) => {
     const { lang, code } = codeBlocks[+idx];
     return `<div class="code-block">` +
@@ -1110,16 +1142,10 @@ async function sendMessage() {
 
   const row = createAiRow();
   const mdDiv = row.querySelector(".md");
+  const aiBody = row.querySelector(".ai-body");
 
-  mdDiv.innerHTML = `<p style="color:#ff9800"><strong>⚠️ 현재 AI 사용이 제한됐습니다.</strong></p>
-    <p>임시로 <a href="https://chatgpt.com" target="_blank" rel="noopener noreferrer"><strong>https://chatgpt.com</strong></a> 사용 바랍니다.</p>`;
-
-  sendBtn.disabled = false;
-  chatArea.scrollTop = chatArea.scrollHeight;
-  inputBox.focus();
-  return;
-
-  /* ── 이하 코드는 임시 비활성화 ── */
+  // Worker API 설정
+  const WORKER_URL = "https://eungaram-proxy.msangji170.workers.dev/api/chat";
 
   if (history.length === 0) {
     addToHistory(text.slice(0, 36) + (text.length > 36 ? '…' : ''));
@@ -1127,7 +1153,6 @@ async function sendMessage() {
 
   history.push({ role: "user", content: text });
 
-  const aiBody = row.querySelector(".ai-body");
   let full = "";
   let started = false;
 
@@ -1137,71 +1162,96 @@ async function sendMessage() {
       ...history.slice(-8)
     ];
 
-    let res, lastErr;
-    const MAX_RETRIES = API_KEYS.length;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        res = await fetch(getApiUrl(), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${API_KEYS[currentKeyIdx].key}`
-          },
-          body: JSON.stringify({
-            model: "openai/gpt-3.5-turbo",
-            messages,
-            temperature: 0.25,
-            max_tokens: 850,
-            stream: true
-          })
-        });
+    const requestPayload = {
+      messages: messages,
+      temperature: 0.7,
+      top_p: 0.9,
+      max_tokens: 1500,
+      stream: true
+    };
 
-        if (res.status === 429 || res.status === 401) {
-          const errBody = await res.json().catch(() => ({}));
-          lastErr = new Error(errBody?.error?.message || `HTTP ${res.status}`);
-          currentKeyIdx = (currentKeyIdx + 1) % API_KEYS.length;
-          continue;
-        }
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => ({}));
-          throw new Error(errBody?.error?.message || `HTTP ${res.status}`);
-        }
-        lastErr = null;
-        break;
-      } catch (fetchErr) {
-        lastErr = fetchErr;
-        break;
-      }
+    console.log('FETCH_REQUEST:', {
+      url: WORKER_URL,
+      method: 'POST',
+      payload: requestPayload
+    });
+
+    // Worker API 호출 (스트리밍)
+    const response = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestPayload)
+    });
+
+    console.log('HTTP_RESPONSE:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('HTTP_ERROR:', {
+        status: response.status,
+        error: errorData.error || 'Unknown error'
+      });
+      throw new Error(errorData.error || `HTTP ${response.status}`);
     }
-    if (lastErr) throw lastErr;
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    let started = false;
+    // SSE 스트리밍 파싱 (버퍼링으로 청크 경계 문제 해결)
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let chunkCount = 0;
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split("\n");
-      buf = lines.pop();
+      if (done) {
+        console.log('STREAM_END:', { totalChunks: chunkCount });
+        break;
+      }
+
+      chunkCount++;
+      const decodedChunk = decoder.decode(value, { stream: true });
+      console.log(`STREAM_CHUNK_${chunkCount}:`, decodedChunk);
+
+      buffer += decodedChunk;
+      const lines = buffer.split("\n");
+      // 마지막 불완전한 줄은 버퍼에 남겨둠
+      buffer = lines.pop() ?? "";
+
       for (const line of lines) {
         if (!line.startsWith("data: ")) continue;
-        const raw = line.slice(6).trim();
-        if (raw === "[DONE]") break;
+
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === "[DONE]") {
+          console.log('STREAM_MARKER: [DONE] received');
+          continue;
+        }
+
         try {
-          const delta = JSON.parse(raw).choices?.[0]?.delta?.content;
-          if (delta) {
-            if (!started) { mdDiv.innerHTML = ""; started = true; }
-            full += delta;
+          const data = JSON.parse(jsonStr);
+          console.log('JSON_PARSE:', data);
+          const content = data.choices?.[0]?.delta?.content;
+
+          if (content) {
+            console.log('CONTENT_RECEIVED:', { text: content, accumulated: full + content });
+            if (!started) {
+              mdDiv.innerHTML = "";
+              started = true;
+            }
+            full += content;
             mdDiv.textContent = full;
             const cur = document.createElement("span");
             cur.className = "scursor";
             mdDiv.appendChild(cur);
             chatArea.scrollTop = chatArea.scrollHeight;
           }
-        } catch (_) {}
+        } catch (e) {
+          console.error('JSON_PARSE_ERROR:', { jsonStr: jsonStr, error: e.message });
+        }
       }
     }
 
@@ -1209,12 +1259,25 @@ async function sendMessage() {
       full = sanitize(full);
       mdDiv.innerHTML = renderMD(full);
       if (window.renderMathInElement) {
-        renderMathInElement(mdDiv, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}]});
+        renderMathInElement(mdDiv, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\[', right: '\\]', display: true},
+            {left: '$', right: '$', display: false},
+            {left: '\\(', right: '\\)', display: false}
+          ],
+          throwOnError: false
+        });
       }
       addActionBtn(aiBody, full);
     } else {
-      mdDiv.innerHTML = "<p>죄송해요, 답변을 받지 못했어요. 다시 시도해 주세요.</p>";
+      mdDiv.innerHTML = "<p>⚠️ 응답 오류. 다시 시도해주세요.</p>";
     }
+
+    console.log('FINAL_RESPONSE:', {
+      fullLength: full.length,
+      content: full.slice(0, 200) + (full.length > 200 ? '...' : '')
+    });
 
     history.push({ role: "assistant", content: full });
     if (history.length > 40) history.splice(0, 2);
@@ -1223,8 +1286,11 @@ async function sendMessage() {
     if (session) { session.messages = [...history]; _saveAllSessions(); }
 
   } catch (err) {
+    console.error('CATCH_ERROR:', {
+      message: err.message,
+      stack: err.stack
+    });
     mdDiv.innerHTML = `<p style="color:#f87171">⚠️ <strong>오류:</strong> ${esc(err.message)}</p>`;
-    console.error(err);
   }
 
   sendBtn.disabled = false;

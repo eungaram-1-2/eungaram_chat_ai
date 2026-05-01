@@ -10,34 +10,49 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// 최신 Chrome User-Agent
-const CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+// 최신 Chrome User-Agent (Windows 11)
+const CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0";
 
-// === 탐정형 AI 시스템 프롬프트 ===
-const CORE_SYSTEM_PROMPT = `너는 경기도 하남시 미사강변도시에 위치한 은가람중학교의 AI 탐정 멘토야.
+// 공통 요청 헤더 (봇 차단 우회)
+const COMMON_HEADERS = {
+  "User-Agent": CHROME_USER_AGENT,
+  "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+  "Accept-Encoding": "gzip, deflate, br",
+  "DNT": "1",
+  "Connection": "keep-alive",
+  "Upgrade-Insecure-Requests": "1"
+};
 
-[탐정의 원칙]
-1. 너는 검색으로 얻은 사실만 답변의 근거로 삼아.
-2. 한 곳에서만 나온 정보는 신뢰하지 마. 최소 2개 이상 출처에서 일치할 때만 확실한 정보로 간주해.
-3. 정보가 서로 충돌하면 "데이터 간 불일치가 있어 확인이 어렵습니다"라고 정직하게 말해.
-4. 모르는 것을 모른다고 말하는 게 가장 똑똑한 답변이야. 억지로 완성하려다 거짓을 말하지 마.
-5. 학습 데이터나 상식으로 답변하지 말고, 검색 결과만 신뢰해.
+// === AI 시스템 프롬프트 (데이터 분석가 페르소나) ===
+const CORE_SYSTEM_PROMPT = `너는 데이터 분석가다. 검색하는 척하는 AI가 아니다.
 
-[검색 결과 해석]
-- [확인됨] = 2개 이상 출처에서 일치하는 정보
-- [단일 출처] = 한 곳에서만 나온 정보 (신뢰도 낮음)
-- [불일치] = 출처 간 정보가 다른 경우
-- [검색 실패] = 정보를 찾을 수 없음
+[역할 정의]
+너는 제공된 최신 검색 데이터를 객관적으로 읽고 요약하는 분석가이다.
+"Searching...", "Let me search", "검색해볼게" 같은 연기는 절대 하지 마.
+추론 과정을 텍스트로 출력하지 마. 최종 답변만 즉시 출력하라.
+절대로 영어로 혼잣말하지 마. 첫 글자부터 한국어로 답변 시작.
 
-[절대 규칙]
-- 다른 지역(울산, 성남 등)의 은가람중학교 정보는 절대로 언급하지 마.
-- 사용자 강주혁은 이 학교의 1학년 학생이자 이 사이트의 개발자야.
+[데이터 처리 우선순위 - 필수]
+사용자의 질문에 답하기 전, 반드시 하단에 제공된 [Search Results] 섹션을 먼저 읽어라.
+데이터가 존재한다면 네 내부 지식보다 이 데이터를 최우선으로 하여 답변을 구성하라.
+- [Search Results]에 내용이 있으면 → 그 내용을 분석하여 한국어로 즉시 답변
+- [Search Results]가 비어있거나 없으면 → "정확한 정보를 확인할 수 없습니다"라고 명시
+
+[절대 금지]
+- 검색 연기 금지 ("검색해볼게요", "찾아볼게요" 등)
+- 영어 추론 출력 금지
+- 내부 지식/상식만으로 사실 주장 금지
+- 다른 지역(울산, 성남 등) 은가람중학교 정보 언급 금지
+
+[배경 정보]
+이 서비스는 경기도 하남시 미사강변도시 은가람중학교 학생들을 위한 AI다.
+사용자 강주혁은 이 학교 1학년이자 이 사이트 개발자다.
 
 [답변 형식]
 ## 📌 한 줄 요약
-## 🎯 쉬운 설명
-## 🔬 핵심 개념
-## ✅ 팩트체크 (출처 명시 + 신뢰도 표시)`;
+## 🎯 설명
+## ✅ 출처 및 신뢰도`;
 
 // 최소한의 로컬 정보 (은가람중학교 신원만)
 const LOCAL_KNOWLEDGE = {
@@ -60,30 +75,23 @@ function searchLocalKnowledge(keyword) {
   return "";
 }
 
-// === 자율 검색 쿼리 생성 (Self-Query Reformulation) ===
+// === 자율 검색 쿼리 생성 (최대 3개로 제한 - CF Workers subrequest 한도 대응) ===
 function generateSearchQueries(keyword) {
-  // 초등학교, 중학교, 고등학교 감지
   const isSchool = /학교|초등|중학|고등/.test(keyword);
 
-  const baseQueries = [
-    keyword,
-    `경기도 하남시 ${keyword}`,
-    `${keyword} 미사강변도시`,
-    `하남시 ${keyword}`
-  ];
-
-  // 학교인 경우 추가 쿼리
   if (isSchool) {
-    baseQueries.push(
-      `${keyword} 공식 홈페이지`,
-      `${keyword} 도로명 주소`,
-      `${keyword} 전화번호`,
-      `${keyword} 설립연도`,
-      `${keyword} 교장`
-    );
+    return [
+      `경기도 하남시 ${keyword}`,
+      `${keyword} 주소 전화번호`,
+      `${keyword} 정보`
+    ];
   }
 
-  return baseQueries;
+  return [
+    keyword,
+    `경기도 하남시 ${keyword}`,
+    `하남 미사 ${keyword}`
+  ];
 }
 
 // === 신뢰도 기반 정보 분석 ===
@@ -192,14 +200,13 @@ async function searchGoogleNews(query) {
     const encodedQuery = encodeURIComponent(query);
     const rssUrl = `https://news.google.com/rss/search?q=${encodedQuery}&hl=ko&gl=KR`;
     console.log(`[Google News] 요청 URL: ${rssUrl}`);
-    console.log(`[Google News] User-Agent: ${CHROME_USER_AGENT}`);
 
     const response = await fetch(rssUrl, {
-      signal: AbortSignal.timeout(2500),
-      headers: { "User-Agent": CHROME_USER_AGENT }
+      signal: AbortSignal.timeout(2000),
+      headers: COMMON_HEADERS
     });
 
-    console.log(`[Google News] 응답 상태: ${response.status} ${response.statusText}`);
+    console.log(`[Google News] HTTP 상태: ${response.status}`);
 
     if (!response.ok) {
       console.log(`[Google News] 실패 - HTTP ${response.status}`);
@@ -221,16 +228,17 @@ async function searchGoogleNews(query) {
       }
     }
 
+    const resultText = results.join("\n");
+    console.log(`[Google News] 최종 텍스트 길이: ${resultText.length}자`);
+
     if (results.length > 1) {
-      console.log(`[Google News] 최종 결과: ${results.length - 1}개 항목`);
-      return results.join("\n");
+      return resultText;
     } else {
       console.log(`[Google News] 필터링 후 결과 없음`);
       return null;
     }
   } catch (e) {
     console.error(`[Google News] 에러:`, e.message);
-    console.error(`[Google News] Stack:`, e.stack);
     return null;
   }
 }
@@ -241,14 +249,13 @@ async function searchNaverNews(query) {
     const encodedQuery = encodeURIComponent(query);
     const rssUrl = `https://newssearch.naver.com/search.naver?where=rss&query=${encodedQuery}`;
     console.log(`[Naver News] 요청 URL: ${rssUrl}`);
-    console.log(`[Naver News] User-Agent: ${CHROME_USER_AGENT}`);
 
     const response = await fetch(rssUrl, {
-      signal: AbortSignal.timeout(2500),
-      headers: { "User-Agent": CHROME_USER_AGENT }
+      signal: AbortSignal.timeout(2000),
+      headers: COMMON_HEADERS
     });
 
-    console.log(`[Naver News] 응답 상태: ${response.status} ${response.statusText}`);
+    console.log(`[Naver News] HTTP 상태: ${response.status}`);
 
     if (!response.ok) {
       console.log(`[Naver News] 실패 - HTTP ${response.status}`);
@@ -270,67 +277,61 @@ async function searchNaverNews(query) {
       }
     }
 
+    const resultText = results.join("\n");
+    console.log(`[Naver News] 최종 텍스트 길이: ${resultText.length}자`);
+
     if (results.length > 1) {
-      console.log(`[Naver News] 최종 결과: ${results.length - 1}개 항목`);
-      return results.join("\n");
+      return resultText;
     } else {
       console.log(`[Naver News] 필터링 후 결과 없음`);
       return null;
     }
   } catch (e) {
     console.error(`[Naver News] 에러:`, e.message);
-    console.error(`[Naver News] Stack:`, e.stack);
     return null;
   }
 }
 
-// 3. DuckDuckGo API
-async function searchDuckDuckGo(query) {
+// 3. 나무위키 직접 조회 (Jina Reader API - 실제 한국 콘텐츠)
+async function searchNamuWiki(query) {
   try {
-    const encodedQuery = encodeURIComponent(query);
-    const ddgUrl = `https://api.duckduckgo.com/?q=${encodedQuery}&format=json`;
-    console.log(`[DuckDuckGo] 요청 URL: ${ddgUrl}`);
+    // 핵심 키워드만 추출해 나무위키 조회 (공백 제거, 조사 제거)
+    const keyword = query.replace(/(경기도|하남시|미사강변도시|주소|전화번호|정보|학교)\s?/g, "").trim() || query;
+    const jinaUrl = `https://r.jina.ai/https://namu.wiki/w/${encodeURIComponent(keyword)}`;
+    console.log(`[NamuWiki] 조회 키워드: "${keyword}", URL: ${jinaUrl}`);
 
-    const response = await fetch(ddgUrl, {
-      signal: AbortSignal.timeout(2500),
-      headers: { "User-Agent": CHROME_USER_AGENT }
+    const response = await fetch(jinaUrl, {
+      signal: AbortSignal.timeout(2000),
+      headers: {
+        "User-Agent": CHROME_USER_AGENT,
+        "Accept": "text/plain",
+        "X-Return-Format": "text"
+      }
     });
 
-    console.log(`[DuckDuckGo] 응답 상태: ${response.status} ${response.statusText}`);
+    console.log(`[NamuWiki] HTTP 상태: ${response.status}`);
 
     if (!response.ok) {
-      console.log(`[DuckDuckGo] 실패 - HTTP ${response.status}`);
+      console.log(`[NamuWiki] 실패 - HTTP ${response.status}`);
       return null;
     }
 
-    const data = await response.json();
-    console.log(`[DuckDuckGo] Abstract 길이: ${data.Abstract?.length || 0}자`);
-    console.log(`[DuckDuckGo] RelatedTopics 수: ${data.RelatedTopics?.length || 0}`);
+    const text = await response.text();
+    console.log(`[NamuWiki] 응답 크기: ${text.length}자`);
 
-    const results = ["[DuckDuckGo Web]"];
-
-    if (data.Abstract && data.Abstract.length > 20) {
-      results.push(`- ${data.Abstract.substring(0, 200)}`);
-    }
-
-    if (data.RelatedTopics && data.RelatedTopics.length > 0) {
-      data.RelatedTopics.slice(0, 2).forEach(topic => {
-        if (topic.Text && topic.Text.length > 15) {
-          results.push(`- ${topic.Text.substring(0, 150)}`);
-        }
-      });
-    }
-
-    if (results.length > 1) {
-      console.log(`[DuckDuckGo] 최종 결과: ${results.length - 1}개 항목`);
-      return results.join("\n");
-    } else {
-      console.log(`[DuckDuckGo] 필터링 후 결과 없음`);
+    // 404/존재하지 않는 문서 판별
+    if (text.includes("404") || text.includes("문서가 존재하지 않습니다") || text.length < 100) {
+      console.log(`[NamuWiki] 문서 없음`);
       return null;
     }
+
+    // 앞부분 600자만 (핵심 요약 영역)
+    const excerpt = text.replace(/\n{3,}/g, "\n\n").substring(0, 600);
+    const resultText = `[나무위키]\n- ${excerpt}`;
+    console.log(`[NamuWiki] 최종 텍스트 길이: ${resultText.length}자`);
+    return resultText;
   } catch (e) {
-    console.error(`[DuckDuckGo] 에러:`, e.message);
-    console.error(`[DuckDuckGo] Stack:`, e.stack);
+    console.error(`[NamuWiki] 에러:`, e.message);
     return null;
   }
 }
@@ -343,11 +344,11 @@ async function searchWikipedia(query) {
     console.log(`[Wikipedia] 요청 URL: ${wikiUrl}`);
 
     const response = await fetch(wikiUrl, {
-      signal: AbortSignal.timeout(2500),
-      headers: { "User-Agent": CHROME_USER_AGENT }
+      signal: AbortSignal.timeout(2000),
+      headers: COMMON_HEADERS
     });
 
-    console.log(`[Wikipedia] 응답 상태: ${response.status} ${response.statusText}`);
+    console.log(`[Wikipedia] HTTP 상태: ${response.status}`);
 
     if (!response.ok) {
       console.log(`[Wikipedia] 실패 - HTTP ${response.status}`);
@@ -371,16 +372,17 @@ async function searchWikipedia(query) {
       }
     });
 
+    const resultText = results.join("\n");
+    console.log(`[Wikipedia] 최종 텍스트 길이: ${resultText.length}자`);
+
     if (results.length > 1) {
-      console.log(`[Wikipedia] 최종 결과: ${results.length - 1}개 항목`);
-      return results.join("\n");
+      return resultText;
     } else {
       console.log(`[Wikipedia] 필터링 후 결과 없음`);
       return null;
     }
   } catch (e) {
     console.error(`[Wikipedia] 에러:`, e.message);
-    console.error(`[Wikipedia] Stack:`, e.stack);
     return null;
   }
 }
@@ -389,16 +391,15 @@ async function searchWikipedia(query) {
 async function searchSearXNG(query) {
   try {
     const encodedQuery = encodeURIComponent(query);
-    const searxngUrl = `https://searx.be/search?q=${encodedQuery}&format=json`;
+    const searxngUrl = `https://searx.be/search?q=${encodedQuery}&format=json&language=ko`;
     console.log(`[SearXNG] 요청 URL: ${searxngUrl}`);
-    console.log(`[SearXNG] User-Agent: ${CHROME_USER_AGENT}`);
 
     const response = await fetch(searxngUrl, {
-      signal: AbortSignal.timeout(2500),
-      headers: { "User-Agent": CHROME_USER_AGENT }
+      signal: AbortSignal.timeout(2000),
+      headers: COMMON_HEADERS
     });
 
-    console.log(`[SearXNG] 응답 상태: ${response.status} ${response.statusText}`);
+    console.log(`[SearXNG] HTTP 상태: ${response.status}`);
 
     if (!response.ok) {
       console.log(`[SearXNG] 실패 - HTTP ${response.status}`);
@@ -421,16 +422,17 @@ async function searchSearXNG(query) {
       }
     });
 
+    const resultText = results.join("\n");
+    console.log(`[SearXNG] 최종 텍스트 길이: ${resultText.length}자`);
+
     if (results.length > 1) {
-      console.log(`[SearXNG] 최종 결과: ${results.length - 1}개 항목`);
-      return results.join("\n");
+      return resultText;
     } else {
       console.log(`[SearXNG] 필터링 후 결과 없음`);
       return null;
     }
   } catch (e) {
     console.error(`[SearXNG] 에러:`, e.message);
-    console.error(`[SearXNG] Stack:`, e.stack);
     return null;
   }
 }
@@ -444,21 +446,19 @@ async function searchWithCrossVerification(keyword) {
 
   const analyzer = new SearchResultAnalyzer();
 
-  // 각 쿼리에 대해 모든 검색 엔진 병렬 실행
+  // 각 쿼리에 대해 3개 검색 엔진만 병렬 실행 (CF Workers subrequest 한도 절감)
   for (const query of queries) {
     console.log(`[CrossVerify] 쿼리 처리: "${query}"`);
 
     try {
       const searches = [
         searchNaverNews(query),
-        searchGoogleNews(query),
-        searchDuckDuckGo(query),
-        searchWikipedia(query),
+        searchNamuWiki(query),
         searchSearXNG(query)
       ];
 
       const results = await Promise.all(searches);
-      const sourceNames = ['Naver News', 'Google News', 'DuckDuckGo', 'Wikipedia', 'SearXNG'];
+      const sourceNames = ['Naver News', 'NamuWiki', 'SearXNG'];
 
       // 결과를 신뢰도 시스템에 추가
       let successCount = 0;
@@ -490,6 +490,7 @@ async function searchWithCrossVerification(keyword) {
   const formattedResult = analyzer.formatForAI();
   console.log(`[CrossVerify] 최종 분석 결과 길이: ${formattedResult.length}자`);
   console.log(`[CrossVerify] 저장된 항목 수: ${analyzer.results.size}`);
+  console.log(`[CrossVerify] 최종 텍스트:\n${formattedResult.substring(0, 500)}`);
 
   return formattedResult;
 }
@@ -573,32 +574,66 @@ export default {
         console.log(`[Search] 검색 키워드 추출 실패 (검색 불필요)`);
       }
 
-      // === 검증된 정보만 AI에 전달 ===
+      // === 검증된 정보만 AI에 전달 (강력한 주입 형태) ===
       let enhancedMessages = [...messages];
-      if (searchResults && !searchResults.includes("[검색 결과 없음]")) {
-        const aiContext = `[자율 검색 결과 - 교차 검증됨]\n${searchResults}`;
-        console.log(`[AI Input] 검색 결과 포함 - 길이: ${aiContext.length}자`);
-        console.log(`[AI Input] 최종 프롬프트:\n${aiContext.substring(0, 500)}...`);
-        enhancedMessages.push({
-          role: "system",
-          content: aiContext
-        });
-      } else if (searchKeywords) {
-        const noResultMsg = `[검색 결과] '${searchKeywords}'에 대해 신뢰할 만한 정보를 찾지 못했습니다. 이 경우 "정확한 정보를 확인할 수 없습니다"라고 말하세요. 추측이나 일반 상식으로 답변하지 마세요.`;
-        console.log(`[AI Input] 검색 결과 없음 메시지 추가`);
-        enhancedMessages.push({
-          role: "system",
-          content: noResultMsg
-        });
+
+      // 검색 결과가 50자 이상이고 "[검색 결과 없음]"을 포함하지 않으면 절대 진실로 강제 주입
+      if (searchResults && searchResults.length >= 50 && !searchResults.includes("[검색 결과 없음]")) {
+        const truncatedResults = searchResults.length > 1200 ? searchResults.substring(0, 1200) + "\n[이하 생략]" : searchResults;
+
+        const mandatorySearchContext = `[CRITICAL: 이것은 실제 검색 결과입니다. 절대 무시하지 마세요.]
+
+아래 데이터는 실시간 검색 엔진(Naver News, NamuWiki, Wikipedia, SearXNG)에서 직접 가져온 검증된 정보입니다.
+이 정보는 당신의 학습 데이터보다 우선합니다. 반드시 따라야 합니다.
+
+[Search Results - 실제 데이터]
+========================================
+${truncatedResults}
+========================================
+
+[의무사항]
+1. 위의 [Search Results]를 기반으로만 답변하세요.
+2. 이 데이터가 없으면 내부 지식을 사용하지 마세요.
+3. 검색 결과가 없으면 "정확한 정보를 확인할 수 없습니다"라고 명시하세요.
+4. 절대 가정하거나 지어내지 마세요.`;
+
+        console.log(`[AI Input] 검색 결과 강제 주입 (원본: ${searchResults.length}자, 전달: ${truncatedResults.length}자)`);
+        enhancedMessages.push({ role: "system", content: mandatorySearchContext });
       } else {
-        console.log(`[AI Input] 검색 결과 없음 (검색 미수행)`);
+        const safetyNetContext = `[Search Results] 검색 결과 없음
+========================================
+실시간 검색 결과를 가져오지 못했습니다.
+
+[의무사항]
+- "정확한 정보를 확인할 수 없습니다"라고 명시하세요.
+- 내부 지식으로 가정하지 마세요.
+- 절대 지어내지 마세요.`;
+        console.log(`[AI Input] 검색 실패 - 안전망 주입 (검색 결과 길이: ${searchResults ? searchResults.length : 0}자)`);
+        enhancedMessages.push({ role: "system", content: safetyNetContext });
       }
 
       console.log(`[AI Input] 최종 메시지 수: ${enhancedMessages.length}`);
+      console.log(`[AI Input] 시스템 메시지 총 개수: ${enhancedMessages.filter(m => m.role === "system").length}`);
 
-      console.log(`[NVIDIA] API 호출 시작`);
+      // 최종 메시지 크기 계산 및 로깅
+      const totalContextLength = enhancedMessages
+        .filter(m => m.role === "system")
+        .reduce((sum, m) => sum + (m.content?.length || 0), 0);
+
+      // 마지막 시스템 메시지 (검색 결과 또는 안전망) 내용 로깅
+      const lastSystemMessage = enhancedMessages.find(m => m.role === "system" && (m.content.includes("[현재 인터넷 검색 결과]") || m.content.includes("[기본 배경 정보]")));
+      if (lastSystemMessage) {
+        console.log(`[AI Input] AI에 주입된 컨텍스트 유형: ${lastSystemMessage.content.includes("[현재 인터넷 검색 결과]") ? "검색 결과" : "안전망 데이터"}`);
+        console.log(`[AI Input] 컨텍스트 미리보기: ${lastSystemMessage.content.substring(0, 300)}`);
+      }
+
+      console.log(`[NVIDIA] =========== API 호출 준비 ===========`);
       console.log(`[NVIDIA] 엔드포인트: ${NVIDIA_ENDPOINT}`);
       console.log(`[NVIDIA] 모델: ${MODEL_NAME}`);
+      console.log(`[NVIDIA] 최대 토큰: 3000`);
+      console.log(`[NVIDIA] 전체 시스템 컨텍스트 길이: ${totalContextLength}자`);
+      console.log(`[NVIDIA] 메시지 배열 크기: ${enhancedMessages.length}`);
+      console.log(`[NVIDIA] 검색 결과 포함 여부: ${searchResults && searchResults.length > 50 ? "YES (강제 주입)" : "NO (안전망 사용)"}`);
 
       const nvResponse = await fetch(NVIDIA_ENDPOINT, {
         method: "POST",
@@ -610,11 +645,12 @@ export default {
         body: JSON.stringify({
           model: MODEL_NAME,
           messages: enhancedMessages,
-          temperature: 0.7,
+          temperature: 0.6,
           top_p: 0.9,
           presence_penalty: 0.6,
-          max_tokens: body.max_tokens || 1500,
+          max_tokens: body.max_tokens || 2000,
           stream: true,
+          include_reasoning: false,
         }),
       });
 
