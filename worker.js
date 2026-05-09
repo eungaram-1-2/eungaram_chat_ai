@@ -1,7 +1,31 @@
-// Cloudflare Workers - 은가람중학교 AI 도우미 (지식 기반, 검색 없음)
+// Cloudflare Workers - 은가람중학교 AI 도우미 (웹 검색 지원)
 
 const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
 const MODEL_NAME = "openai/gpt-oss-20b";
+const SERPER_ENDPOINT = "https://google.serper.dev/search";
+
+function needsSearch(question) {
+  const keywords = ["오늘", "최신", "현재", "지금", "날씨", "뉴스", "근황", "최근", "언제", "몇 시", "몇 년도", "요즘", "이번", "어제", "내일", "내주", "다음주"];
+  return keywords.some(kw => question.includes(kw));
+}
+
+async function searchWeb(query, apiKey) {
+  try {
+    const res = await fetch(SERPER_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "X-API-KEY": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ q: query, gl: "kr", hl: "ko", num: 3 }),
+    });
+    const data = await res.json();
+    return data.organic?.slice(0, 3) || [];
+  } catch (err) {
+    console.error(`[Serper] 검색 에러:`, err.message);
+    return [];
+  }
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +44,8 @@ const CORE_SYSTEM_PROMPT = `너는 경기도 하남시 미사강변도시 은가
 
 [역할]
 학습된 지식으로 학생들의 질문에 친절하고 정확하게 답변한다.
-인터넷 검색 기능은 없으며, 확실하게 알고 있는 지식과 아래 학교 정보로만 답변한다.
+웹 검색을 지원하므로 최신 정보(날씨, 뉴스, 시간표 등)도 제공할 수 있다.
+만약 웹 검색 결과가 주어지면 [웹 검색 결과] 섹션을 참고해서 답변한다.
 모르는 내용은 솔직하게 "모릅니다" 또는 "학습 정보에 없습니다"라고 말한다.
 
 [학교 정보]
@@ -44,6 +69,7 @@ const CORE_SYSTEM_PROMPT = `너는 경기도 하남시 미사강변도시 은가
 
 [출처 작성 규칙]
 출처는 답변에 실제로 사용된 정보 종류에 따라 아래 기준으로만 작성한다.
+- 웹 검색 결과를 사용한 경우 → "웹 검색 결과 (Google)"
 - 은가람중학교 로컬 데이터를 실제 사용한 경우에만 → "시스템 내부 데이터베이스 (은가람중학교 정보)"
 - 일반 상식·학습 지식만 사용한 경우 → "내부 학습 데이터 및 일반 과학 원리"
 - 존재하지 않는 URL, 링크, 외부 자료, 가상의 인물은 절대 출처로 쓰지 않는다.
@@ -90,6 +116,24 @@ export default {
       const userQuestion = [...messages].filter(m => m.role === "user").slice(-1)[0]?.content || "";
       console.log(`[Request] 질문: "${userQuestion}"`);
 
+      // 웹 검색이 필요한지 확인하고 검색 결과 주입
+      let searchUsed = false;
+      if (needsSearch(userQuestion) && env.SERPER_API_KEY) {
+        console.log(`[Serper] 검색 시작: "${userQuestion}"`);
+        const results = await searchWeb(userQuestion, env.SERPER_API_KEY);
+        if (results.length > 0) {
+          searchUsed = true;
+          const searchContext = results
+            .map(r => `- ${r.title}: ${r.snippet}\n  출처: ${r.link}`)
+            .join("\n\n");
+          messages.push({
+            role: "system",
+            content: `[웹 검색 결과 - 다음 정보를 바탕으로 답변하세요]\n${searchContext}`,
+          });
+          console.log(`[Serper] 검색 완료: ${results.length}개 결과`);
+        }
+      }
+
       // 3. NVIDIA API 호출 (정확도 우선, hallucination 최소화)
       const nvResponse = await fetch(NVIDIA_ENDPOINT, {
         method: "POST",
@@ -127,8 +171,10 @@ export default {
             while (true) {
               const { done, value } = await reader.read();
               if (done) {
-                // 답변 끝에 disclaimer 자동 추가
-                const disclaimer = "\n\n---\n> ⚠️ 이 답변은 웹 검색을 지원하지 않으므로 실시간 정보는 포함되지 않습니다. 부정확할 수 있으니 중요한 사항은 직접 확인해 주세요.";
+                // 답변 끝에 disclaimer 자동 추가 (검색 사용 여부에 따라)
+                const disclaimer = searchUsed
+                  ? "\n\n---\n> ℹ️ 이 답변은 웹 검색 기반입니다. 최신 정보를 담고 있지만 완벽할 수 없으니 중요한 사항은 다시 한 번 확인해 주세요."
+                  : "\n\n---\n> ℹ️ 이 답변은 학습 지식 기반입니다. 실시간 정보가 필요하면 다시 질문해 주세요.";
                 const disclaimerChunk = `data: ${JSON.stringify({ choices: [{ delta: { content: disclaimer } }] })}\n\n`;
                 await writer.write(new TextEncoder().encode(disclaimerChunk));
                 fullResponse += disclaimer;
