@@ -20,20 +20,37 @@ async function searchWeb(query, clientId, clientSecret) {
   const isNews = NEWS_KEYWORDS.some(kw => query.includes(kw));
   const endpoint = isNews ? NAVER_NEWS_ENDPOINT : NAVER_WEB_ENDPOINT;
   try {
-    const res = await fetch(`${endpoint}?query=${encodeURIComponent(query)}&display=3&sort=date`, {
+    const url = `${endpoint}?query=${encodeURIComponent(query)}&display=3&sort=date`;
+    console.log(`[Naver] 요청 URL: ${url}`);
+
+    const res = await fetch(url, {
       headers: {
         "X-Naver-Client-Id": clientId,
         "X-Naver-Client-Secret": clientSecret,
       },
     });
+
+    console.log(`[Naver] 응답 상태: ${res.status}`);
     const data = await res.json();
-    return (data.items || []).slice(0, 3).map(item => ({
-      title: stripHtml(item.title),
-      link: item.link,
-      snippet: stripHtml(item.description),
-    }));
+    console.log(`[Naver] 응답 JSON:`, JSON.stringify(data).substring(0, 500));
+
+    const items = data.items || [];
+    console.log(`[Naver] items 배열 길이: ${items.length}`);
+
+    const results = items.slice(0, 3).map((item, idx) => {
+      console.log(`[Naver] 항목 ${idx + 1} - title: ${item.title}, description 있음: ${!!item.description}`);
+      return {
+        title: stripHtml(item.title),
+        link: item.link,
+        snippet: stripHtml(item.description),
+      };
+    });
+
+    console.log(`[Naver] 최종 반환 개수: ${results.length}`);
+    return results;
   } catch (err) {
     console.error(`[Naver] 검색 에러:`, err.message);
+    console.error(`[Naver] 스택:`, err.stack);
     return [];
   }
 }
@@ -47,6 +64,13 @@ const CORS_HEADERS = {
 // === AI 시스템 프롬프트 (지식 기반 도우미, hallucination 최소화) ===
 const CORE_SYSTEM_PROMPT = `너는 경기도 하남시 미사강변도시 은가람중학교 1학년 학생들을 위한 AI 선생님이다.
 
+[웹 검색 결과 처리 - 최우선 규칙]
+⭐ 중요: [웹 검색 결과] 섹션이 있으면 반드시 그것을 기반으로만 답변한다.
+- 검색 결과가 있으면 그 정보를 최우선으로 사용한다
+- 학습 지식과 충돌해도 검색 결과를 따른다
+- 검색 결과가 있는데도 "제공할 수 없습니다"는 절대 금지
+- 검색 결과를 받았으면 반드시 그것을 바탕으로 구체적인 정보를 제공한다
+
 [핵심 원칙 - 절대 지켜야 할 사항]
 1. 확실하지 않은 것은 절대 만들어내지 말 것
 2. 존재하지 않는 인물, 책, 자료, URL을 언급하지 말 것
@@ -56,7 +80,6 @@ const CORE_SYSTEM_PROMPT = `너는 경기도 하남시 미사강변도시 은가
 [역할]
 학습된 지식으로 학생들의 질문에 친절하고 정확하게 답변한다.
 웹 검색을 지원하므로 최신 정보(날씨, 뉴스, 시간표 등)도 제공할 수 있다.
-만약 웹 검색 결과가 주어지면 [웹 검색 결과] 섹션을 참고해서 답변한다.
 모르는 내용은 솔직하게 "모릅니다" 또는 "학습 정보에 없습니다"라고 말한다.
 
 [학교 정보]
@@ -131,20 +154,39 @@ export default {
       let searchUsed = false;
       const naverId = env.NAVER_CLIENT_ID;
       const naverSecret = env.NAVER_CLIENT_SECRET;
-      if (needsSearch(userQuestion) && naverId && naverSecret) {
+
+      const needsSearchResult = needsSearch(userQuestion);
+      console.log(`[Naver] 검색 필요 여부: ${needsSearchResult}`);
+      console.log(`[Naver] 환경변수 설정: ID=${!!naverId}, Secret=${!!naverSecret}`);
+
+      if (needsSearchResult && naverId && naverSecret) {
         console.log(`[Naver] 검색 시작: "${userQuestion}"`);
-        const results = await searchWeb(userQuestion, naverId, naverSecret);
-        if (results.length > 0) {
-          searchUsed = true;
-          const searchContext = results
-            .map(r => `- ${r.title}: ${r.snippet}\n  출처: ${r.link}`)
-            .join("\n\n");
-          messages.push({
-            role: "system",
-            content: `[웹 검색 결과 - 다음 정보를 바탕으로 답변하세요]\n${searchContext}`,
-          });
-          console.log(`[Naver] 검색 완료: ${results.length}개 결과`);
+        try {
+          const results = await searchWeb(userQuestion, naverId, naverSecret);
+          console.log(`[Naver] 검색 결과 개수: ${results.length}`);
+          if (results.length > 0) {
+            results.forEach((r, i) => {
+              console.log(`[Naver] 결과 ${i + 1}: ${r.title}`);
+            });
+            searchUsed = true;
+            const searchContext = results
+              .map(r => `- ${r.title}: ${r.snippet}\n  출처: ${r.link}`)
+              .join("\n\n");
+            messages.push({
+              role: "system",
+              content: `[웹 검색 결과 - 다음 정보를 바탕으로 답변하세요]\n${searchContext}`,
+            });
+            console.log(`[Naver] 검색 완료: ${results.length}개 결과`);
+          } else {
+            console.log(`[Naver] 검색은 시도했지만 결과가 없음`);
+          }
+        } catch (searchErr) {
+          console.error(`[Naver] 검색 중 오류: ${searchErr.message}`);
         }
+      } else if (needsSearchResult && !naverId) {
+        console.warn(`[Naver] 검색 필요하지만 NAVER_CLIENT_ID 환경변수 없음`);
+      } else if (needsSearchResult && !naverSecret) {
+        console.warn(`[Naver] 검색 필요하지만 NAVER_CLIENT_SECRET 환경변수 없음`);
       }
 
       // 3. NVIDIA API 호출 (정확도 우선, hallucination 최소화)
@@ -158,7 +200,7 @@ export default {
         body: JSON.stringify({
           model: MODEL_NAME,
           messages: messages,
-          temperature: 0.3,
+          temperature: 0.5,
           top_p: 0.9,
           max_tokens: 1000,
           stream: true,
