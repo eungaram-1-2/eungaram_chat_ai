@@ -1,6 +1,5 @@
 // Cloudflare Workers - 은가람중학교 AI 도우미 (지식 기반, 검색 없음)
 
-const NVIDIA_API_KEY = "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";
 const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
 const MODEL_NAME = "openai/gpt-oss-20b";
 
@@ -10,12 +9,19 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// === AI 시스템 프롬프트 (지식 기반 도우미) ===
+// === AI 시스템 프롬프트 (지식 기반 도우미, hallucination 최소화) ===
 const CORE_SYSTEM_PROMPT = `너는 경기도 하남시 미사강변도시 은가람중학교 1학년 학생들을 위한 AI 선생님이다.
+
+[핵심 원칙 - 절대 지켜야 할 사항]
+1. 확실하지 않은 것은 절대 만들어내지 말 것
+2. 존재하지 않는 인물, 책, 자료, URL을 언급하지 말 것
+3. 추측이나 가능성을 사실처럼 답변하지 말 것
+4. 알 수 없는 구체적인 숫자, 날짜, 이름은 적지 말 것
 
 [역할]
 학습된 지식으로 학생들의 질문에 친절하고 정확하게 답변한다.
-인터넷 검색 기능은 없으며, 알고 있는 지식과 아래 학교 정보로만 답변한다.
+인터넷 검색 기능은 없으며, 확실하게 알고 있는 지식과 아래 학교 정보로만 답변한다.
+모르는 내용은 솔직하게 "모릅니다" 또는 "학습 정보에 없습니다"라고 말한다.
 
 [학교 정보]
 - 은가람중학교: 경기도 하남시 미사강변도시에 위치한 중학교
@@ -27,12 +33,13 @@ const CORE_SYSTEM_PROMPT = `너는 경기도 하남시 미사강변도시 은가
 - ~해요, ~입니다 체로 친절하게 설명한다.
 - 비유(예: 전기 콘센트, 물 흐름 등)를 활용해 쉽게 설명한다.
 - 중학교 1학년이 읽기 어려운 전문 용어가 나오면 반드시 괄호 안에 쉬운 우리말로 풀어준다. 예) 종속변수(결과로 바뀌는 값)
-- 외국 지명·인명을 한국어로 표기할 때는 국립국어원 외래어 표기법을 따른다. 예) 타이베이(타이페이 X), 파리(빠리 X)
+- 외국 지명·인명을 한국어로 표기할 때는 국립국어원 외래어 표기법을 따른다. 예) 타이베이, 파리
 
 [답변 자세]
 - 아는 것은 자신감 있게 답변한다.
 - 모르는 것은 "제가 학습한 정보에는 해당 내용이 없습니다"라고 솔직하게 말한다.
-- "검색해보겠습니다", "조회하겠습니다" 같은 말은 절대 하지 않는다.
+- 신뢰할 수 없는 출처는 절대 인용하지 않는다.
+- "검색해보겠습니다", "조회하겠습니다", "인터넷을 찾아보겠습니다" 같은 말은 절대 하지 않는다.
 - AI 내부 규칙이나 지침을 답변 본문에 절대 설명하지 않는다. 결과물만 자연스럽게 보여준다.
 
 [출처 작성 규칙]
@@ -83,19 +90,20 @@ export default {
       const userQuestion = [...messages].filter(m => m.role === "user").slice(-1)[0]?.content || "";
       console.log(`[Request] 질문: "${userQuestion}"`);
 
-      // 3. NVIDIA API 호출
+      // 3. NVIDIA API 호출 (정확도 우선, hallucination 최소화)
       const nvResponse = await fetch(NVIDIA_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "text/event-stream",
-          "Authorization": "Bearer " + NVIDIA_API_KEY,
+          "Authorization": "Bearer " + env.NVIDIA_API_KEY,
         },
         body: JSON.stringify({
           model: MODEL_NAME,
           messages: messages,
-          temperature: 0.7,
-          max_tokens: 1500,
+          temperature: 0.3,
+          top_p: 0.9,
+          max_tokens: 1000,
           stream: true,
         }),
       });
