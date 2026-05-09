@@ -2,27 +2,38 @@
 
 const NVIDIA_ENDPOINT = "https://integrate.api.nvidia.com/v1/chat/completions";
 const MODEL_NAME = "openai/gpt-oss-20b";
-const SERPER_ENDPOINT = "https://google.serper.dev/search";
+const NAVER_NEWS_ENDPOINT = "https://openapi.naver.com/v1/search/news.json";
+const NAVER_WEB_ENDPOINT  = "https://openapi.naver.com/v1/search/webkr.json";
+
+const NEWS_KEYWORDS = ["뉴스", "사건", "사고", "최신", "오늘 뉴스"];
 
 function needsSearch(question) {
   const keywords = ["오늘", "최신", "현재", "지금", "날씨", "뉴스", "근황", "최근", "언제", "몇 시", "몇 년도", "요즘", "이번", "어제", "내일", "내주", "다음주"];
   return keywords.some(kw => question.includes(kw));
 }
 
-async function searchWeb(query, apiKey) {
+function stripHtml(str) {
+  return str.replace(/<[^>]*>/g, "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+}
+
+async function searchWeb(query, clientId, clientSecret) {
+  const isNews = NEWS_KEYWORDS.some(kw => query.includes(kw));
+  const endpoint = isNews ? NAVER_NEWS_ENDPOINT : NAVER_WEB_ENDPOINT;
   try {
-    const res = await fetch(SERPER_ENDPOINT, {
-      method: "POST",
+    const res = await fetch(`${endpoint}?query=${encodeURIComponent(query)}&display=3&sort=date`, {
       headers: {
-        "X-API-KEY": apiKey,
-        "Content-Type": "application/json",
+        "X-Naver-Client-Id": clientId,
+        "X-Naver-Client-Secret": clientSecret,
       },
-      body: JSON.stringify({ q: query, gl: "kr", hl: "ko", num: 3 }),
     });
     const data = await res.json();
-    return data.organic?.slice(0, 3) || [];
+    return (data.items || []).slice(0, 3).map(item => ({
+      title: stripHtml(item.title),
+      link: item.link,
+      snippet: stripHtml(item.description),
+    }));
   } catch (err) {
-    console.error(`[Serper] 검색 에러:`, err.message);
+    console.error(`[Naver] 검색 에러:`, err.message);
     return [];
   }
 }
@@ -118,9 +129,11 @@ export default {
 
       // 웹 검색이 필요한지 확인하고 검색 결과 주입
       let searchUsed = false;
-      if (needsSearch(userQuestion) && env.SERPER_API_KEY) {
-        console.log(`[Serper] 검색 시작: "${userQuestion}"`);
-        const results = await searchWeb(userQuestion, env.SERPER_API_KEY);
+      const naverId = env["Naver Client ID"];
+      const naverSecret = env["Client Secret"];
+      if (needsSearch(userQuestion) && naverId && naverSecret) {
+        console.log(`[Naver] 검색 시작: "${userQuestion}"`);
+        const results = await searchWeb(userQuestion, naverId, naverSecret);
         if (results.length > 0) {
           searchUsed = true;
           const searchContext = results
@@ -130,7 +143,7 @@ export default {
             role: "system",
             content: `[웹 검색 결과 - 다음 정보를 바탕으로 답변하세요]\n${searchContext}`,
           });
-          console.log(`[Serper] 검색 완료: ${results.length}개 결과`);
+          console.log(`[Naver] 검색 완료: ${results.length}개 결과`);
         }
       }
 
