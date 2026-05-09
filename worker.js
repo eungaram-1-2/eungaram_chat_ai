@@ -129,8 +129,8 @@ export default {
 
       // 웹 검색이 필요한지 확인하고 검색 결과 주입
       let searchUsed = false;
-      const naverId = env["Naver Client ID"];
-      const naverSecret = env["Client Secret"];
+      const naverId = env.NAVER_CLIENT_ID;
+      const naverSecret = env.NAVER_CLIENT_SECRET;
       if (needsSearch(userQuestion) && naverId && naverSecret) {
         console.log(`[Naver] 검색 시작: "${userQuestion}"`);
         const results = await searchWeb(userQuestion, naverId, naverSecret);
